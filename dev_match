@@ -16,7 +16,7 @@ import (
 const (
 	ServerURL = "localhost:8000"
 	MapName   = "balanced" //balanced, inverted, scarce, tiny
-	AgentDir  = "./SecretAgentBee"
+	AgentDir  = "./agent"
 	AgentBin  = "./agent_bin" // Temporary binary name
 	HistoryDir = "./arena/history"
 	ViewerPath = "./arena/viewer"
