@@ -1,0 +1,142 @@
+package main
+
+import (
+	"encoding/json"
+	"fmt"
+	"log"
+	"net/http"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"sync"
+	"time"
+)
+
+// Configurations
+const (
+	ServerURL = "localhost:8000"
+	MapName   = "balanced" //balanced, inverted, scarce, tiny
+	AgentDir  = "./SecretAgentBee"
+	AgentBin  = "./agent_bin" // Temporary binary name
+	HistoryDir = "./arena/history"
+	ViewerPath = "./arena/viewer"
+)
+
+func main() {
+	log.SetFlags(0)
+
+	// 1. Build the agent for Linux
+	log.Println("🔨 Building agent...")
+	build := exec.Command("go", "build", "-o", "../agent_bin", ".")
+	build.Dir = AgentDir
+	build.Stdout = os.Stdout
+	build.Stderr = os.Stderr
+	if err := build.Run(); err != nil {
+		log.Fatalf("❌ Build failed: %v", err)
+	}
+	defer os.Remove(AgentBin) // Cleanup after we are done
+
+	// 2. Create the Game (GET request)
+	// We manually construct the URL string since it's simple
+	reqURL := fmt.Sprintf("http://%s/newgame?map=%s&players=2", ServerURL, MapName)
+	log.Printf("📡 Creating game: %s", reqURL)
+
+	resp, err := http.Get(reqURL)
+	if err != nil {
+		log.Fatalf("❌ Server connection failed: %v", err)
+	}
+	defer resp.Body.Close()
+
+	// 3. Parse the Game ID
+	// We only care about the "id" field
+	var result struct {
+		ID string `json:"id"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		log.Fatalf("❌ Failed to parse server response: %v", err)
+	}
+	log.Printf("✅ Game ID: %s", result.ID)
+	
+	// 4. Launch Agents Concurrently
+	var wg sync.WaitGroup
+	wg.Add(2)
+
+	for i := 1; i <= 2; i++ {
+		go func(playerNum int) {
+			defer wg.Done()
+			runAgent(playerNum, result.ID)
+		}(i)
+	}
+
+	wg.Wait()
+	log.Println("🏁 Match finished.")
+	launchViewer()
+}
+
+func runAgent(playerNum int, gameID string) {
+	name := fmt.Sprintf("Player %d", playerNum)
+	team := fmt.Sprintf("SecretAgent%d", playerNum)
+	log.Printf("🚀 Launching %s...", name)
+
+	// Command: ./agent_bin <server_url> <game_id>
+	cmd := exec.Command(AgentBin, ServerURL, gameID, team)
+	
+	// Pipe output to console so you can see your agent's Printlns
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+
+	if err := cmd.Run(); err != nil {
+		log.Printf("💀 %s exited with error: %v", name, err)
+	} else {
+		log.Printf("sz %s finished.", name)
+	}
+}
+
+func launchViewer() {
+	log.Println("🔎 Scanning for newest history file...")
+	
+	// Give the server a moment to finish writing the file
+	time.Sleep(500 * time.Millisecond)
+
+	entries, err := os.ReadDir(HistoryDir)
+	if err != nil {
+		log.Printf("⚠️  Could not read history directory: %v", err)
+		return
+	}
+
+	var newestFile string
+	var newestTime time.Time
+
+	for _, entry := range entries {
+		if entry.IsDir() {
+			continue
+		}
+		info, err := entry.Info()
+		if err != nil {
+			continue
+		}
+		if info.ModTime().After(newestTime) {
+			newestTime = info.ModTime()
+			newestFile = entry.Name()
+		}
+	}
+
+	if newestFile == "" {
+		log.Println("⚠️  No history files found to view.")
+		return
+	}
+
+	fullHistoryPath := filepath.Join(HistoryDir, newestFile)
+	log.Printf("🎬 Starting Viewer for: %s", fullHistoryPath)
+
+	// Command: go run ./arena/viewer --file ./arena/history/xxx.json
+	viewerCmd := exec.Command("go", "run", ViewerPath, "--file", fullHistoryPath)
+	
+	// We pipe output so you can see the viewer logs
+	viewerCmd.Stdout = os.Stdout
+	viewerCmd.Stderr = os.Stderr
+
+	if err := viewerCmd.Run(); err != nil {
+		log.Printf("❌ Viewer failed to start: %v", err)
+	}
+}
