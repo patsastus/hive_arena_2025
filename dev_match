@@ -2,8 +2,10 @@ package main
 
 import (
 	"encoding/json"
+	"flag"
 	"fmt"
 	"log"
+	"math/rand"
 	"net/http"
 	"os"
 	"os/exec"
@@ -15,88 +17,177 @@ import (
 // Configurations
 const (
 	ServerURL = "localhost:8000"
-	MapName   = "balanced" //balanced, inverted, scarce, tiny
-	AgentDir  = "./agent"
-	AgentBin  = "./agent_bin" // Temporary binary name
 	HistoryDir = "./arena/history"
 	ViewerPath = "./arena/viewer"
+	DefaultSrc = "./agent" // Default path to your main agent
 )
+
+var MapPool = []string{"balanced", "inverted", "scarce", "tiny"}
+
+// AgentBuild represents a compiled agent binary
+type AgentBuild struct {
+	Name       string // Friendly name (e.g., "Main", "Experimental")
+	SourcePath string // Where the code lives
+	BinaryPath string // Where the temp binary lives
+}
+
+// MatchConfig holds the setup for this specific run
+type MatchConfig struct {
+	MapName string
+	Count   int
+	Roster  []*AgentBuild // Which build runs in slot 1, slot 2, etc.
+}
 
 func main() {
 	log.SetFlags(0)
+	rand.Seed(time.Now().UnixNano())
 
-	// 1. Build the agent for Linux
-	log.Println("🔨 Building agent...")
-	build := exec.Command("go", "build", "-o", "../agent_bin", ".")
-	build.Dir = AgentDir
-	build.Stdout = os.Stdout
-	build.Stderr = os.Stderr
-	if err := build.Run(); err != nil {
-		log.Fatalf("❌ Build failed: %v", err)
+	// 1. Parse Flags
+	mapFlag := flag.String("map", "", "Map name (balanced, inverted, scarce, tiny)")
+	countFlag := flag.Int("n", 0, "Number of agents (2-6)")
+	vsFlag := flag.String("vs", "", "Path to a challenger agent (e.g. ./experiments/new_path)")
+	mainFlag := flag.String("main", DefaultSrc, "Path to main agent source")
+	flag.Parse()	
+
+	// 2. Determine Configuration
+	config := setupConfig(*mapFlag, *countFlag, *mainFlag, *vsFlag)
+	
+	log.Printf("📋 Configuration: Map=[%s], Agents=[%d]", config.MapName, config.Count)
+
+	// 3. Build Agents
+	// We map unique source paths to builds so we don't build the same thing twice
+	uniqueBuilds := make(map[string]*AgentBuild)
+	for _, agent := range config.Roster {
+		if _, exists := uniqueBuilds[agent.SourcePath]; !exists {
+			uniqueBuilds[agent.SourcePath] = agent
+		}
 	}
-	defer os.Remove(AgentBin) // Cleanup after we are done
 
-	// 2. Create the Game (GET request)
-	// We manually construct the URL string since it's simple
-	reqURL := fmt.Sprintf("http://%s/newgame?map=%s&players=2", ServerURL, MapName)
-	log.Printf("📡 Creating game: %s", reqURL)
+	log.Println("🔨 Building agents...")
+	for _, build := range uniqueBuilds {
+		if err := compileAgent(build); err != nil {
+			log.Fatalf("❌ Build failed for %s: %v", build.Name, err)
+		}
+		defer os.Remove(build.BinaryPath) // Schedule cleanup
+	}
 
+	// 4. Create Game
+	gameID := createGame(config.MapName, config.Count)
+	
+	// 5. Launch Agents
+	var wg sync.WaitGroup
+	wg.Add(config.Count)
+
+	log.Println("🚀 Launching roster...")
+	for i, agentBuild := range config.Roster {
+		playerNum := i + 1 // Server is 1-indexed
+		go func(pNum int, build *AgentBuild) {
+			defer wg.Done()
+			runAgent(pNum, gameID, build)
+		}(playerNum, agentBuild)
+	}
+
+	wg.Wait()
+	log.Println("🏁 Match finished.")
+
+	// 6. View Results
+	launchViewer()
+}
+
+// --- Helper Functions ---
+
+func setupConfig(mapName string, count int, mainPath, vsPath string) MatchConfig {
+	cfg := MatchConfig{}
+
+	// Randomize Map if empty
+	if mapName == "" {
+		cfg.MapName = MapPool[rand.Intn(len(MapPool))]
+	} else {
+		cfg.MapName = mapName
+	}
+
+	// Randomize Count if 0
+	if count == 0 {
+		cfg.Count = rand.Intn(5) + 2 // Random 2 to 6
+	} else {
+		cfg.Count = count
+	}
+
+	// Define Builds
+	mainBuild := &AgentBuild{
+		Name:       "Main",
+		SourcePath: mainPath,
+		BinaryPath: fmt.Sprintf("./bin_main_%d", time.Now().UnixNano()),
+	}
+
+	var vsBuild *AgentBuild
+	if vsPath != "" {
+		vsBuild = &AgentBuild{
+			Name:       "Challenger",
+			SourcePath: vsPath,
+			BinaryPath: fmt.Sprintf("./bin_vs_%d", time.Now().UnixNano()),
+		}
+	}
+
+	// Populate Roster (Round Robin if VS mode)
+	for i := 0; i < cfg.Count; i++ {
+		if vsBuild != nil && i%2 != 0 {
+			cfg.Roster = append(cfg.Roster, vsBuild)
+		} else {
+			cfg.Roster = append(cfg.Roster, mainBuild)
+		}
+	}
+
+	return cfg
+}
+
+func compileAgent(build *AgentBuild) error {
+	log.Printf("   Compiling %s (%s)...", build.Name, build.SourcePath)
+	
+	// Ensure absolute path for binary output to avoid confusion
+	absBin, _ := filepath.Abs(build.BinaryPath)
+	
+	cmd := exec.Command("go", "build", "-o", absBin, ".")
+	cmd.Dir = build.SourcePath
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	return cmd.Run()
+}
+
+func createGame(mapName string, players int) string {
+	reqURL := fmt.Sprintf("http://%s/newgame?map=%s&players=%d", ServerURL, mapName, players)
 	resp, err := http.Get(reqURL)
 	if err != nil {
 		log.Fatalf("❌ Server connection failed: %v", err)
 	}
 	defer resp.Body.Close()
 
-	// 3. Parse the Game ID
-	// We only care about the "id" field
 	var result struct {
 		ID string `json:"id"`
 	}
 	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
 		log.Fatalf("❌ Failed to parse server response: %v", err)
 	}
-	log.Printf("✅ Game ID: %s", result.ID)
-	
-	// 4. Launch Agents Concurrently
-	var wg sync.WaitGroup
-	wg.Add(2)
-
-	for i := 1; i <= 2; i++ {
-		go func(playerNum int) {
-			defer wg.Done()
-			runAgent(playerNum, result.ID)
-		}(i)
-	}
-
-	wg.Wait()
-	log.Println("🏁 Match finished.")
-	launchViewer()
+	log.Printf("✅ Game Created: %s", result.ID)
+	return result.ID
 }
 
-func runAgent(playerNum int, gameID string) {
-	name := fmt.Sprintf("Player %d", playerNum)
-	team := fmt.Sprintf("SecretAgent%d", playerNum)
-	log.Printf("🚀 Launching %s...", name)
-
-	// Command: ./agent_bin <server_url> <game_id>
-	cmd := exec.Command(AgentBin, ServerURL, gameID, team)
+func runAgent(playerNum int, gameID string, build *AgentBuild) {
+	// Make the team name indicate the agent version
+	teamName := fmt.Sprintf("%s-P%d", build.Name, playerNum)
 	
-	// Pipe output to console so you can see your agent's Printlns
+	cmd := exec.Command(build.BinaryPath, ServerURL, gameID, teamName)
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 
 	if err := cmd.Run(); err != nil {
-		log.Printf("💀 %s exited with error: %v", name, err)
-	} else {
-		log.Printf("sz %s finished.", name)
+		log.Printf("💀 Player %d (%s) exited with error: %v", playerNum, build.Name, err)
 	}
 }
 
 func launchViewer() {
-	log.Println("🔎 Scanning for newest history file...")
-	
-	// Give the server a moment to finish writing the file
-	time.Sleep(500 * time.Millisecond)
+	log.Println("🔎 Scanning for replay...")
+	time.Sleep(500 * time.Millisecond) // Wait for file write
 
 	entries, err := os.ReadDir(HistoryDir)
 	if err != nil {
@@ -108,13 +199,9 @@ func launchViewer() {
 	var newestTime time.Time
 
 	for _, entry := range entries {
-		if entry.IsDir() {
-			continue
-		}
+		if entry.IsDir() { continue }
 		info, err := entry.Info()
-		if err != nil {
-			continue
-		}
+		if err != nil { continue }
 		if info.ModTime().After(newestTime) {
 			newestTime = info.ModTime()
 			newestFile = entry.Name()
@@ -122,21 +209,17 @@ func launchViewer() {
 	}
 
 	if newestFile == "" {
-		log.Println("⚠️  No history files found to view.")
+		log.Println("⚠️  No history files found.")
 		return
 	}
 
 	fullHistoryPath := filepath.Join(HistoryDir, newestFile)
-	log.Printf("🎬 Starting Viewer for: %s", fullHistoryPath)
+	log.Printf("🎬 Opening Viewer: %s", newestFile)
 
-	// Command: go run ./arena/viewer --file ./arena/history/xxx.json
-	viewerCmd := exec.Command("go", "run", ViewerPath, "--file", fullHistoryPath)
-	
-	// We pipe output so you can see the viewer logs
-	viewerCmd.Stdout = os.Stdout
-	viewerCmd.Stderr = os.Stderr
-
-	if err := viewerCmd.Run(); err != nil {
-		log.Printf("❌ Viewer failed to start: %v", err)
+	cmd := exec.Command("go", "run", ViewerPath, "--file", fullHistoryPath)
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	if err := cmd.Run(); err != nil {
+		log.Printf("❌ Viewer failed: %v", err)
 	}
 }

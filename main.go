@@ -9,29 +9,6 @@ import (
 
 import . "hive-arena/common"
 
-//unexported variable from common/game.go is useful
-var directionToOffset = map[Direction]Coords{
-	E:  {0, 2},
-	NE: {-1, 1},
-	NW: {-1, -1},
-	W:  {0, -2},
-	SW: {1, -1},
-	SE: {1, 1},
-}
-
-
-//unexported function from common/game.go is useful
-func targetIsBlocked(gs *GameState, order *Order) bool {
-
-	hex := gs.Hexes[order.Target()]
-	if hex == nil || !hex.Terrain.IsWalkable() || hex.Entity != nil {
-		order.Status = BLOCKED
-		return true
-	}
-	return false
-}
-
-
 var dirs = []Direction{E, SE, SW, W, NW, NE}
 var hives = make(map[Coords]bool)
 
@@ -56,18 +33,18 @@ func goHome(h Hex, coords Coords, state *GameState) Order {
 			target = key
 		}
 	}
-	if distance == 1 { //if next to a hive of yours, put floweri
+	if distance == 1 { //if next to a hive of yours, put flower
 		fmt.Println("Giving order FORAGE")
 		o.Type = FORAGE
 		return o
 	}
-	for dir, offset := range directionToOffset { //loop through all directions, if it's unblocked and reduces distance to target, go there 
+	for dir, offset := range DirectionToOffset { //loop through all directions, if it's unblocked and reduces distance to target, go there 
         next := Coords{
             Row: coords.Row + offset.Row,
             Col: coords.Col + offset.Col,
         }
 		o.Direction = dir
-        if targetIsBlocked(state, &o){
+        if state.TargetIsBlocked(&o){
             continue
         }
         newDist := dist(next, target)
