@@ -13,12 +13,14 @@ var dirs = []Direction{E, SE, SW, W, NW, NE}
 var hives = make(map[Coords]bool)
 
 func dist(one, two Coords) int{
-	dx := int(math.Abs(float64(one.Row - two.Row)))
-	dy := int(math.Abs(float64(one.Col - two.Col)))
-	//return int((dx + dy)/2) //This doesn't work: directly above or below is two mmoves away, but counted as distance 1
-	horizontalN := 0
-	if dy > dx { horizontalN = (dy - dx) / 2 }
-	return dx + horizontalN
+	dx := one.Row - two.Row
+	if dx < 0 { dx = -dx }
+
+	dy := one.Col - two.Col
+	if dy < 0 { dy = -dy }
+
+	if dy < dx { return dx }
+	return dx + (dy - dx) / 2
 }
 
 func goHome(h Hex, coords Coords, state *GameState) Order {
