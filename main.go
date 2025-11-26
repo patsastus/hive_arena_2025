@@ -2,48 +2,24 @@ package main
 
 import (
 	"fmt"
-	"math"
 	"math/rand"
 	"os"
 )
 
 import . "hive-arena/common"
 
-// unexported variable from common/game.go is useful
-var directionToOffset = map[Direction]Coords{
-	E:  {0, 2},
-	NE: {-1, 1},
-	NW: {-1, -1},
-	W:  {0, -2},
-	SW: {1, -1},
-	SE: {1, 1},
-}
-
-var gameMap GameMap
-
-// unexported function from common/game.go is useful
-func targetIsBlocked(gs *GameState, order *Order) bool {
-
-	hex := gs.Hexes[order.Target()]
-	if hex == nil || !hex.Terrain.IsWalkable() || hex.Entity != nil {
-		order.Status = BLOCKED
-		return true
-	}
-	return false
-}
-
 var dirs = []Direction{E, SE, SW, W, NW, NE}
 var hives = make(map[Coords]bool)
 
-func dist(one, two Coords) int {
-	dx := int(math.Abs(float64(one.Row - two.Row)))
-	dy := int(math.Abs(float64(one.Col - two.Col)))
-	//return int((dx + dy)/2) //This doesn't work: directly above or below is two mmoves away, but counted as distance 1
-	horizontalN := 0
-	if dy > dx {
-		horizontalN = (dy - dx) / 2
-	}
-	return dx + horizontalN
+func dist(one, two Coords) int{
+	dx := one.Row - two.Row
+	if dx < 0 { dx = -dx }
+
+	dy := one.Col - two.Col
+	if dy < 0 { dy = -dy }
+
+	if dy < dx { return dx }
+	return dx + (dy - dx) / 2
 }
 
 func goHome(h Hex, coords Coords, state *GameState) Order {
@@ -58,25 +34,16 @@ func goHome(h Hex, coords Coords, state *GameState) Order {
 			target = key
 		}
 	}
-	if distance == 1 { //if next to a hive of yours, put floweri
+	fmt.Printf("[TURN START] MyPos: %v | Target: %v\n", coords, target)
+	if distance == 1 { //if next to a hive of yours, put flower
 		fmt.Println("Giving order FORAGE")
 		o.Type = FORAGE
 		return o
 	}
-	for dir, offset := range directionToOffset { //loop through all directions, if it's unblocked and reduces distance to target, go there
-		next := Coords{
-			Row: coords.Row + offset.Row,
-			Col: coords.Col + offset.Col,
-		}
-		o.Direction = dir
-		if targetIsBlocked(state, &o) {
-			continue
-		}
-		newDist := dist(next, target)
-		if newDist < distance {
-			fmt.Println("Distance %d, giving order MOVE %s", newDist, dir)
-			return o
-		}
+	temp := aStar(coords, target, true, state) //a-star algorithm to find path, boolean true tells it to stop next to target, not on it
+	fmt.Printf("[TURN END] Selected Move: %+v\n", temp)
+	if (temp != Order{}) {
+		return temp
 	}
 	return (Order{
 		Type:      MOVE,
