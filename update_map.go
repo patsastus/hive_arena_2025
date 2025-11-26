@@ -8,6 +8,15 @@ import (
 
 type GameMapObjectType int
 
+var directionToOffset = map[Direction]Coords{
+	E:  {0, 2},
+	NE: {-1, 1},
+	NW: {-1, -1},
+	W:  {0, -2},
+	SW: {1, -1},
+	SE: {1, 1},
+}
+
 const (
 	UNKNOWN GameMapObjectType = iota
 	OWN_BEE
@@ -68,18 +77,18 @@ func (gm *GameMap) MarkAsEdge(c Coords) {
 	}
 }
 
-func (gm *GameMap) findEdges(viewer Coords, state *GameState) {
+func (gm *GameMap) scanForEdges(viewer Coords, state *GameState) {
 	for _, offest := range directionToOffset {
 		currentPos := viewer
 		for i := 0; i < 4; i++ {
 			nextPos := addCoords(currentPos, offest)
 			_, nextExists := state.Hexes[nextPos]
 			if !nextExists {
-				if tile, ok := gm.Mapped[currentPos]; ok {
-					if tile.Type == EMPTY_HEX {
+				if i < 3 {
+					tile := gm.Mapped[nextPos]
+					if tile.Type != EDGE {
 						tile.Type = EDGE
-						gm.Mapped[currentPos] = tile
-						fmt.Printf("Edge found at %v\n", currentPos)
+						gm.Mapped[nextPos] = tile
 					}
 				}
 				break
@@ -99,7 +108,7 @@ func (gm *GameMap) updateGameMap(state *GameState, player int) {
 		tile.BeeHasFlower = false
 		tile.IsFlowerField = false
 		tile.Flowers = 0
-		// wasEdge := (tile.Type == EDGE)
+		wasEdge := (tile.Type == EDGE)
 		unit := visibleHex.Entity
 		if unit != nil && unit.Type == HIVE {
 			if unit.Player == player {
@@ -129,11 +138,18 @@ func (gm *GameMap) updateGameMap(state *GameState, player int) {
 				tile.Type = ENEMY_WALL
 				tile.Player = unit.Player
 			}
-		} else if visibleHex.Terrain == "ROCK" {
-			tile.Type = ROCK_HEX
 		} else {
-			tile.Type = EMPTY_HEX
+			if visibleHex.Terrain == "ROCK" {
+				tile.Type = ROCK_HEX
+			} else {
+				if wasEdge {
+					tile.Type = EDGE
+				} else {
+					tile.Type = EMPTY_HEX
+				}
+			}
 		}
+
 		if visibleHex.Resources > 0 {
 			tile.IsFlowerField = true
 			tile.Flowers = visibleHex.Resources
@@ -147,7 +163,7 @@ func (gm *GameMap) updateGameMap(state *GameState, player int) {
 	for coords, visibleHex := range state.Hexes {
 		unit := visibleHex.Entity
 		if unit != nil && unit.Player == player {
-			gm.findEdges(coords, state)
+			gm.scanForEdges(coords, state)
 		}
 	}
 }

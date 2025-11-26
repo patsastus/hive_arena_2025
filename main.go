@@ -10,16 +10,23 @@ import . "hive-arena/common"
 
 var dirs = []Direction{E, SE, SW, W, NW, NE}
 var hives = make(map[Coords]bool)
+var gameMap GameMap
 
-func dist(one, two Coords) int{
+func dist(one, two Coords) int {
 	dx := one.Row - two.Row
-	if dx < 0 { dx = -dx }
+	if dx < 0 {
+		dx = -dx
+	}
 
 	dy := one.Col - two.Col
-	if dy < 0 { dy = -dy }
+	if dy < 0 {
+		dy = -dy
+	}
 
-	if dy < dx { return dx }
-	return dx + (dy - dx) / 2
+	if dy < dx {
+		return dx
+	}
+	return dx + (dy-dx)/2
 }
 
 func goHome(h Hex, coords Coords, state *GameState) Order {
