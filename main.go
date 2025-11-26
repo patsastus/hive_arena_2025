@@ -2,14 +2,14 @@ package main
 
 import (
 	"fmt"
-	"math/rand"
 	"math"
+	"math/rand"
 	"os"
 )
 
 import . "hive-arena/common"
 
-//unexported variable from common/game.go is useful
+// unexported variable from common/game.go is useful
 var directionToOffset = map[Direction]Coords{
 	E:  {0, 2},
 	NE: {-1, 1},
@@ -19,8 +19,9 @@ var directionToOffset = map[Direction]Coords{
 	SE: {1, 1},
 }
 
+var gameMap GameMap
 
-//unexported function from common/game.go is useful
+// unexported function from common/game.go is useful
 func targetIsBlocked(gs *GameState, order *Order) bool {
 
 	hex := gs.Hexes[order.Target()]
@@ -31,27 +32,28 @@ func targetIsBlocked(gs *GameState, order *Order) bool {
 	return false
 }
 
-
 var dirs = []Direction{E, SE, SW, W, NW, NE}
 var hives = make(map[Coords]bool)
 
-func dist(one, two Coords) int{
+func dist(one, two Coords) int {
 	dx := int(math.Abs(float64(one.Row - two.Row)))
 	dy := int(math.Abs(float64(one.Col - two.Col)))
 	//return int((dx + dy)/2) //This doesn't work: directly above or below is two mmoves away, but counted as distance 1
 	horizontalN := 0
-	if dy > dx { horizontalN = (dy - dx) / 2 }
+	if dy > dx {
+		horizontalN = (dy - dx) / 2
+	}
 	return dx + horizontalN
 }
 
 func goHome(h Hex, coords Coords, state *GameState) Order {
-	distance := 20000 
+	distance := 20000
 	var o Order
 	var target Coords
 	o.Coords = coords
 	o.Type = MOVE
-	for key, _ := range hives { 	//find closest hive
-		if distance > dist(key,coords) {
+	for key, _ := range hives { //find closest hive
+		if distance > dist(key, coords) {
 			distance = dist(key, coords)
 			target = key
 		}
@@ -61,28 +63,27 @@ func goHome(h Hex, coords Coords, state *GameState) Order {
 		o.Type = FORAGE
 		return o
 	}
-	for dir, offset := range directionToOffset { //loop through all directions, if it's unblocked and reduces distance to target, go there 
-        next := Coords{
-            Row: coords.Row + offset.Row,
-            Col: coords.Col + offset.Col,
-        }
-		o.Direction = dir
-        if targetIsBlocked(state, &o){
-            continue
-        }
-        newDist := dist(next, target)
-        if newDist < distance {
-			fmt.Println("Distance %d, giving order MOVE %s", newDist, dir)
-			return o 
+	for dir, offset := range directionToOffset { //loop through all directions, if it's unblocked and reduces distance to target, go there
+		next := Coords{
+			Row: coords.Row + offset.Row,
+			Col: coords.Col + offset.Col,
 		}
-    }
+		o.Direction = dir
+		if targetIsBlocked(state, &o) {
+			continue
+		}
+		newDist := dist(next, target)
+		if newDist < distance {
+			fmt.Println("Distance %d, giving order MOVE %s", newDist, dir)
+			return o
+		}
+	}
 	return (Order{
-			Type:      MOVE,
-			Coords:    coords,
-			Direction: dirs[rand.Intn(len(dirs))],
+		Type:      MOVE,
+		Coords:    coords,
+		Direction: dirs[rand.Intn(len(dirs))],
 	}) //fallback: try a random move
 }
-
 
 func beeOrder(h Hex, coords Coords, state *GameState, player int) Order {
 	if h.Entity.HasFlower { //if carrying a flower, go home
@@ -106,6 +107,7 @@ func think(state *GameState, player int) []Order {
 
 	var orders []Order
 
+	gameMap.updateGameMap(state, player)
 	for coords, hex := range state.Hexes {
 		unit := hex.Entity
 		if unit != nil && unit.Type == HIVE && unit.Player == player {
@@ -129,6 +131,7 @@ func main() {
 		os.Exit(1)
 	}
 
+	gameMap = NewGameMap()
 	host := os.Args[1]
 	id := os.Args[2]
 	name := os.Args[3]
