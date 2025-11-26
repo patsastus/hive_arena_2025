@@ -1,10 +1,9 @@
 package main
 
 import "sort"
-
-/*
-	builds on https://reintech.io/blog/a-star-search-algorithm-in-go
-*/
+import "fmt"
+import "math/rand"
+import . "hive-arena/common"
 
 type Node struct {
 	hex 				Coords
@@ -19,15 +18,42 @@ func sortByTotal(candidates []*Node) {
     })
 }
 
-func goTo(targetHex Coords, state *GameState) Order {
+func getDirection(loc, target Coords) (Direction, bool) {
+	offset := Coords{
+		Row: target.Row - loc.Row,
+		Col: target.Col - loc.Col,
+	}
+	for dir, coords := range DirectionToOffset {
+        if coords == offset {
+            return dir, true
+        }
+    }
+    return "", false // Return empty string and false if no match
+}
+
+func goTo(loc, targetHex Coords, state *GameState) Order {
+	dir, found := getDirection(loc, targetHex)
+	if (!found) {
+		fmt.Println("goTo got invalid source/target combo")
+		dir = dirs[rand.Intn(len(dirs))]
+	}
     return Order{
-        Command: "MOVE",
-        Target:  targetHex,
-        // You might need an EntityID here depending on your Order struct
+        Type: MOVE,
+        Coords: loc,
+		Direction: dir,
     }
 }
 
-func aStar(loc, target Coords, state *GameState) Order {
+/*
+	A-* pathfinding algorithm
+	builds on https://reintech.io/blog/a-star-search-algorithm-in-go
+	and https://en.wikipedia.org/wiki/A*_search_algorithm
+	returns an order with the first step of the path
+	stopNextTo is so you can go to non-walkable target (hive, wall, enemy) == true, or walkable space(empty, field) == false
+	also return total distance ?
+*/
+func aStar(loc, target Coords, stopNextTo bool, state *GameState) Order {
+
 	startNode := &Node{
 		hex:	loc,
 		cost:	0,
@@ -35,22 +61,24 @@ func aStar(loc, target Coords, state *GameState) Order {
 		total:	dist(loc, target),
 		prev:	nil,
 	}
-	var candidates []*Node{startNode}
-	var	candidateMap = map[Coords]*Node{loc: startNode}
-	var rejects	= make(map[Coords]bool)
+
+	candidates := []*Node{startNode}
+	candidateMap := map[Coords]*Node{loc: startNode}
+	rejects	:= make(map[Coords]bool)
 	for len(candidates) > 0 { //Use a for-loop as a while-loop
 		sortByTotal(candidates)
 		current := candidates[0]
 		candidates = candidates[1:]
 		delete(candidateMap, current.hex)
 
-		if current.hex == target { //loop back to the first step
+		atTarget := current.hex == target //on the target square
+		nextToTarget := stopNextTo && dist(current.hex, target) == 1 //target isn't walkable and next to it
+		if atTarget || nextToTarget { //loop back to the first step
 			for current.prev != nil && current.prev.hex != loc { current = current.prev }
-			return goTo(current.hex, state)
+			return goTo(loc, current.hex, state)
 		}
 
 		rejects[current.hex] = true //never come back here
-
 		for _, offset := range DirectionToOffset {
 			neighborCoords := Coords{
 				Row: current.hex.Row + offset.Row,
@@ -62,17 +90,17 @@ func aStar(loc, target Coords, state *GameState) Order {
 			}
 			if rejects[neighborCoords] { continue }
 			neighborCost := current.cost + 1 //alternate cost for breakable walls?
-			existing, inCandidates := candidateMap[neighborCoords] //looks for the candidate coordinates in the candidate map (inCandidates is a bool whether the key was found, existing is a Coord struct that is either a value or nil
-			if inCandidates { //if location was alrready in candidates, check and update if better than old version
-				if neighborCost >= existing.cost { continue }
-				existing.prev = current
-				existing.cost = neighborCost
-				existing.total = existing.cost + existing.dist
+			cand, exists := candidateMap[neighborCoords] //looks for the candidate coordinates in the candidate map (inCandidates is a bool whether the key was found, existing is a Coord struct that is either a value or nil
+			if exists { //if location was alrready in candidates, check and update if better than old version
+				if neighborCost >= cand.cost { continue }
+				cand.prev = current
+				cand.cost = neighborCost
+				cand.total = cand.cost + cand.dist
 			} else {
 				newNode := &Node{
 					hex: neighborCoords,
 					cost: neighborCost,
-					dist: dist(neighborCoords, target)
+					dist: dist(neighborCoords, target),
 					prev: current,
 				}
 				newNode.total = newNode.cost + newNode.dist
@@ -81,5 +109,5 @@ func aStar(loc, target Coords, state *GameState) Order {
 			}
 		}
 	}
-	return Order{} 
+	return Order{}
 }

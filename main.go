@@ -3,7 +3,6 @@ package main
 import (
 	"fmt"
 	"math/rand"
-	"math"
 	"os"
 )
 
@@ -35,26 +34,17 @@ func goHome(h Hex, coords Coords, state *GameState) Order {
 			target = key
 		}
 	}
+	fmt.Printf("[TURN START] MyPos: %v | Target: %v\n", coords, target)
 	if distance == 1 { //if next to a hive of yours, put flower
 		fmt.Println("Giving order FORAGE")
 		o.Type = FORAGE
 		return o
 	}
-	for dir, offset := range DirectionToOffset { //loop through all directions, if it's unblocked and reduces distance to target, go there 
-        next := Coords{
-            Row: coords.Row + offset.Row,
-            Col: coords.Col + offset.Col,
-        }
-		o.Direction = dir
-        if state.TargetIsBlocked(&o){
-            continue
-        }
-        newDist := dist(next, target)
-        if newDist < distance {
-			fmt.Println("Distance %d, giving order MOVE %s", newDist, dir)
-			return o 
-		}
-    }
+	temp := aStar(coords, target, true, state) //a-star algorithm to find path, boolean true tells it to stop next to target, not on it
+	fmt.Printf("[TURN END] Selected Move: %+v\n", temp)
+	if (temp != Order{}) {
+		return temp
+	}
 	return (Order{
 			Type:      MOVE,
 			Coords:    coords,
