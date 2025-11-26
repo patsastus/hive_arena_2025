@@ -41,18 +41,20 @@ type GameMapObject struct {
 }
 
 type GameMap struct {
-	Revealed   map[Coords]Hex
-	MyHives    map[Coords]bool
-	EnemyHives map[Coords]bool
-	Mapped     map[Coords]GameMapObject
+	Revealed     map[Coords]Hex
+	MyHives      map[Coords]bool
+	EnemyHives   map[Coords]bool
+	FlowerFields map[Coords]bool
+	Mapped       map[Coords]GameMapObject
 }
 
 func NewGameMap() GameMap {
 	return GameMap{
-		Revealed:   make(map[Coords]Hex),
-		MyHives:    make(map[Coords]bool),
-		EnemyHives: make(map[Coords]bool),
-		Mapped:     make(map[Coords]GameMapObject),
+		Revealed:     make(map[Coords]Hex),
+		MyHives:      make(map[Coords]bool),
+		EnemyHives:   make(map[Coords]bool),
+		FlowerFields: make(map[Coords]bool),
+		Mapped:       make(map[Coords]GameMapObject),
 	}
 }
 
@@ -153,9 +155,11 @@ func (gm *GameMap) updateGameMap(state *GameState, player int) {
 		if visibleHex.Resources > 0 {
 			tile.IsFlowerField = true
 			tile.Flowers = visibleHex.Resources
+			gm.FlowerFields[coords] = true
 		} else {
 			tile.IsFlowerField = false
 			tile.Flowers = 0
+			gm.FlowerFields[coords] = false
 		}
 		tile.IsWalkable = visibleHex.Terrain.IsWalkable()
 		gm.Mapped[coords] = tile
