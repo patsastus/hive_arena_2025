@@ -130,4 +130,7 @@ func Run(host string, id string, name string, callback func(*GameState, int) []O
 			run()
 		}
 	}
+	if playerInfo.Id == 1 {
+		gameMap.DumpToFile("map.txt")
+	}
 }
