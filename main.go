@@ -9,7 +9,6 @@ import (
 import . "hive-arena/common"
 
 var dirs = []Direction{E, SE, SW, W, NW, NE}
-var hives = make(map[Coords]bool)
 var gameMap GameMap
 
 func dist(one, two Coords) int {
@@ -29,13 +28,13 @@ func dist(one, two Coords) int {
 	return dx + (dy-dx)/2
 }
 
-func goHome(h Hex, coords Coords) Order {
+func goHome(h Hex, coords Coords) Order {//TODO:Update GameMap to set the chosen target as "occupied"
 	distance := 20000
 	var o Order
 	var target Coords
 	o.Coords = coords
 	o.Type = MOVE
-	for key, _ := range hives { //find closest hive
+	for key, _ := range gameMap.MyHives { //find closest hive
 		if distance > dist(key, coords) {
 			distance = dist(key, coords)
 			target = key
@@ -59,7 +58,21 @@ func goHome(h Hex, coords Coords) Order {
 	}) //fallback: try a random move. TODO:move to random empty hex, not random hex
 }
 
-func beeOrder(h Hex, coords Coords, state *GameState, player int) Order {
+func (gm *GameMap) getNearestFlower(coords Coords) Coords{
+	distance := 20000
+	field := Coords{}
+	for temp, there := range gm.FlowerFields {
+		if (there && dist(coords, temp) < distance) { 
+			distance = dist(coords, temp)
+			field = temp
+		}
+		//TODO: pathfound distance rather than map distance
+	}
+	fmt.Printf("Closest flower to %v found at %v", coords, field)
+	return field
+}
+
+func beeOrder(h Hex, coords Coords, player int) Order {
 	if h.Entity.HasFlower { //if carrying a flower, go home
 		return goHome(h, coords)
 	} else if h.Resources > 0 { //if in a field, pick up a flower
@@ -69,6 +82,11 @@ func beeOrder(h Hex, coords Coords, state *GameState, player int) Order {
 			Direction: dirs[rand.Intn(len(dirs))],
 		})
 	} else {
+		target := gameMap.getNearestFlower(coords)
+		temp := aStar(coords, target, false, &gameMap)
+		if (temp != Order{}) {
+			return temp
+		}
 		return (Order{ //fallback: random move
 			Type:      MOVE,
 			Coords:    coords,
@@ -82,20 +100,16 @@ func think(state *GameState, player int) []Order {
 	var orders []Order
 
 	gameMap.updateGameMap(state, player)
-	for coords, hex := range state.Hexes {
-		unit := hex.Entity
-		if unit != nil && unit.Type == HIVE && unit.Player == player {
-			if hives[coords] == false {
-				fmt.Println(coords, unit)
-			}
-			hives[coords] = true
-		}
-		if unit != nil && unit.Type == BEE && unit.Player == player {
-			fmt.Println(coords, unit)
-			orders = append(orders, beeOrder(*hex, coords, state, player))
+	for coords, hex := range gameMap.MyBees { //first order flowerbees
+		if (hex != nil && hex.Entity.HasFlower){
+			orders = append(orders, beeOrder(*hex, coords, player))
 		}
 	}
-
+	for coords, hex := range gameMap.MyBees { //free bees last
+		if (hex != nil && !hex.Entity.HasFlower){
+			orders = append(orders, beeOrder(*hex, coords, player))
+		}
+	}	
 	return orders
 }
 
