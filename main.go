@@ -29,7 +29,7 @@ func dist(one, two Coords) int {
 	return dx + (dy-dx)/2
 }
 
-func goHome(h Hex, coords Coords, state *GameState) Order {
+func goHome(h Hex, coords Coords) Order {
 	distance := 20000
 	var o Order
 	var target Coords
@@ -47,7 +47,7 @@ func goHome(h Hex, coords Coords, state *GameState) Order {
 		o.Type = FORAGE
 		return o
 	}
-	temp := aStar(coords, target, true, state) //a-star algorithm to find path, boolean true tells it to stop next to target, not on it
+	temp := aStar(coords, target, true, &gameMap) //a-star algorithm to find path, boolean true tells it to stop next to target, not on it
 	fmt.Printf("[TURN END] Selected Move: %+v\n", temp)
 	if (temp != Order{}) {
 		return temp
@@ -56,12 +56,12 @@ func goHome(h Hex, coords Coords, state *GameState) Order {
 		Type:      MOVE,
 		Coords:    coords,
 		Direction: dirs[rand.Intn(len(dirs))],
-	}) //fallback: try a random move
+	}) //fallback: try a random move. TODO:move to random empty hex, not random hex
 }
 
 func beeOrder(h Hex, coords Coords, state *GameState, player int) Order {
 	if h.Entity.HasFlower { //if carrying a flower, go home
-		return goHome(h, coords, state)
+		return goHome(h, coords)
 	} else if h.Resources > 0 { //if in a field, pick up a flower
 		return (Order{
 			Type:      FORAGE,
