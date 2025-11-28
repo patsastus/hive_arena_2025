@@ -42,6 +42,7 @@ type GameMapObject struct {
 
 type GameMap struct {
 	Revealed     map[Coords]Hex
+	MyBees		 map[Coords]*Hex
 	MyHives      map[Coords]bool
 	EnemyHives   map[Coords]bool
 	FlowerFields map[Coords]bool
@@ -51,6 +52,7 @@ type GameMap struct {
 func NewGameMap() GameMap {
 	return GameMap{
 		Revealed:     make(map[Coords]Hex),
+		MyBees:		  make(map[Coords]*Hex),
 		MyHives:      make(map[Coords]bool),
 		EnemyHives:   make(map[Coords]bool),
 		FlowerFields: make(map[Coords]bool),
@@ -102,9 +104,10 @@ func (gm *GameMap) scanForEdges(viewer Coords, state *GameState) {
 }
 
 func (gm *GameMap) updateGameMap(state *GameState, player int) {
+	clear(gm.MyBees) //remove all old bees from map
 	for coords, visibleHex := range state.Hexes {
 		gm.Revealed[coords] = *visibleHex
-
+		index := 0
 		tile := gm.Mapped[coords]
 		tile.Type = UNKNOWN // Default to unknown before classification
 		tile.BeeHasFlower = false
@@ -124,6 +127,8 @@ func (gm *GameMap) updateGameMap(state *GameState, player int) {
 			}
 		} else if unit != nil && unit.Type == BEE {
 			if unit.Player == player {
+				gm.MyBees[coords] = visibleHex
+				index++
 				tile.Type = OWN_BEE
 				tile.Player = unit.Player
 				tile.BeeHasFlower = unit.HasFlower
