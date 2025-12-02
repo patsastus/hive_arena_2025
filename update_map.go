@@ -41,12 +41,15 @@ type GameMapObject struct {
 }
 
 type GameMap struct {
-	Revealed     map[Coords]Hex
-	MyBees		 map[Coords]*Hex
-	MyHives      map[Coords]bool
-	EnemyHives   map[Coords]bool
-	FlowerFields map[Coords]bool
-	Mapped       map[Coords]GameMapObject
+	Revealed     	map[Coords]Hex
+	MyBees		 	map[Coords]*Hex
+	MyHives      	map[Coords]bool
+	EnemyHives   	map[Coords]bool
+	FlowerFields 	map[Coords]bool
+	Mapped      	map[Coords]GameMapObject
+	Targeted		map[Coords]bool
+	Explorers	 	[]Coords
+	StillUnexplored	bool
 }
 
 func NewGameMap() GameMap {
@@ -56,7 +59,9 @@ func NewGameMap() GameMap {
 		MyHives:      make(map[Coords]bool),
 		EnemyHives:   make(map[Coords]bool),
 		FlowerFields: make(map[Coords]bool),
+		Targeted:	  make(map[Coords]bool),
 		Mapped:       make(map[Coords]GameMapObject),
+		Explorers:	  make([]Coords, 2),
 	}
 }
 
@@ -105,6 +110,7 @@ func (gm *GameMap) scanForEdges(viewer Coords, state *GameState) {
 
 func (gm *GameMap) updateGameMap(state *GameState, player int) {
 	clear(gm.MyBees) //remove all old bees from map
+	clear(gm.Targeted) //remove all targeted tiles from last turn
 	for coords, visibleHex := range state.Hexes {
 		gm.Revealed[coords] = *visibleHex
 		index := 0
