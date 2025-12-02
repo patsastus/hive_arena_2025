@@ -2,15 +2,17 @@ package main
 
 import (
 	"fmt"
+	"math"
 	"math/rand"
 	"os"
-)
 
-import . "hive-arena/common"
+	. "hive-arena/common"
+	// "github.com/go-text/typesetting/di"
+)
 
 var dirs = []Direction{E, SE, SW, W, NW, NE}
 var gameMap GameMap
-var explorers int
+var exploring bool
 
 func dist(one, two Coords) int {
 	dx := one.Row - two.Row
@@ -29,7 +31,7 @@ func dist(one, two Coords) int {
 	return dx + (dy-dx)/2
 }
 
-func goHome(h Hex, coords Coords) Order {//TODO:Update GameMap to set the chosen target as "occupied"
+func goHome(h Hex, coords Coords) Order {
 	distance := 20000
 	var o Order
 	var target Coords
@@ -41,14 +43,14 @@ func goHome(h Hex, coords Coords) Order {//TODO:Update GameMap to set the chosen
 			target = key
 		}
 	}
-	fmt.Printf("[TURN START] MyPos: %v | Target: %v\n", coords, target)
+	// fmt.Printf("[TURN START] MyPos: %v | Target: %v\n", coords, target)
 	if distance == 1 { //if next to a hive of yours, put flower
-		fmt.Println("Giving order FORAGE")
+		// fmt.Println("Giving order FORAGE")
 		o.Type = FORAGE
 		return o
 	}
 	temp := aStar(coords, target, true, &gameMap) //a-star algorithm to find path, boolean true tells it to stop next to target, not on it
-	fmt.Printf("[TURN END] Selected Move: %+v\n", temp)
+	// fmt.Printf("[TURN END] Selected Move: %+v\n", temp)
 	if (temp != Order{}) {
 		return temp
 	}
@@ -63,17 +65,19 @@ func (gm *GameMap) estimateTurns(beeCount int) int {
 	sum := 0
 	for field, nonEmpty := range gm.FlowerFields {
 		distance := 20000
-		if !nonEmpty { continue }
+		if !nonEmpty {
+			continue
+		}
 		var best Coords
 		for hive, _ := range gm.MyHives {
-			if (dist(field, hive) < distance) { 
+			if dist(field, hive) < distance {
 				best = hive
 				distance = dist(field, hive)
 			}
 		}
 		sum += dist(field, best) * 2 * int(gm.Mapped[field].Flowers) / beeCount
 	}
-	return sum 
+	return sum
 }
 
 func isEmpty(c Coords, d Direction) bool {
@@ -84,18 +88,33 @@ func isEmpty(c Coords, d Direction) bool {
 	return gameMap.Mapped[target].IsWalkable
 }
 
-func (gm *GameMap) getNearestFlower(coords Coords) Coords{
+func (gm *GameMap) getNearestFlower(coords Coords) Coords {
 	distance := 20000
 	field := Coords{}
 	for temp, there := range gm.FlowerFields {
-		if (there && dist(coords, temp) < distance) { 
+		if there && dist(coords, temp) < distance {
 			distance = dist(coords, temp)
 			field = temp
 		}
 		//TODO: pathfound distance rather than map distance
 	}
-	fmt.Printf("Closest flower to %v found at %v", coords, field)
+	// fmt.Printf("Closest flower to %v found at %v", coords, field)
 	return field
+}
+
+func (gm *GameMap) getNearestUnknown(coords Coords) Coords {
+	distance := math.MaxInt16
+	target := Coords{}
+	for temp, tile := range gm.Mapped {
+		temp_distance := dist(coords, temp)
+		if tile.Type == UNKNOWN && temp_distance < distance {
+			distance = temp_distance
+			target = temp
+		}
+	}
+	fmt.Println("Bee location\t: ", coords)
+	fmt.Println("Nearest unknown\t: ", target)
+	return target
 }
 
 func beeOrder(h Hex, coords Coords, player int) Order {
@@ -108,15 +127,6 @@ func beeOrder(h Hex, coords Coords, player int) Order {
 			Direction: dirs[rand.Intn(len(dirs))],
 		})
 	} else {
-		if explorers > 1 {
-			explorers--
-			return (Order{ //TODO: targeted explore
-				Type:      MOVE,
-				Coords:    coords,
-				Direction: dirs[rand.Intn(len(dirs))],
-			})
-
-		}
 		target := gameMap.getNearestFlower(coords)
 		temp := aStar(coords, target, false, &gameMap)
 		if (temp != Order{}) {
@@ -130,10 +140,23 @@ func beeOrder(h Hex, coords Coords, player int) Order {
 	}
 }
 
+func exploreOrder(h Hex, coords Coords, player int) Order {
+	target := gameMap.getNearestUnknown(coords)
+	temp := aStar(coords, target, false, &gameMap)
+	if (temp != Order{}) {
+		return temp
+	}
+	return (Order{ //fallback: random move
+		Type:      MOVE,
+		Coords:    coords,
+		Direction: dirs[rand.Intn(len(dirs))],
+	})
+}
+
 func spawnBee(c Coords, player int) Order {
 	for _, dir := range dirs {
 		if isEmpty(c, dir) {
-			return (Order{ 
+			return (Order{
 				Type:      SPAWN,
 				Coords:    c,
 				Direction: dir,
@@ -145,22 +168,28 @@ func spawnBee(c Coords, player int) Order {
 
 func think(state *GameState, player int) []Order {
 	var orders []Order
-	if (state.Turn < 100) {	explorers = 1 }
 	gameMap.updateGameMap(state, player)
+	gameMap.ExpandFringe()
+	gameMap.updateExploringStatus()
 	for coords, hex := range gameMap.MyBees { //first, order flowerbees
-		if (hex != nil && hex.Entity.HasFlower){
+		if hex != nil && hex.Entity.HasFlower {
 			orders = append(orders, beeOrder(*hex, coords, player))
 		}
 	}
 	for coords, hex := range gameMap.MyBees { //second, order free bees
-		if (hex != nil && !hex.Entity.HasFlower){
-			orders = append(orders, beeOrder(*hex, coords, player))
+		if hex != nil && !hex.Entity.HasFlower {
+			if exploring && gameMap.Mapped[coords].Type == EXPLORER {
+				orders = append(orders, exploreOrder(*hex, coords, player))
+				fmt.Println("Giving explore order, exploring is ", exploring)
+			} else {
+				orders = append(orders, beeOrder(*hex, coords, player))
+			}
 		}
 	}
 	for coords, _ := range gameMap.MyHives { //see if we should spawn bees
 		timeToEmpty := gameMap.estimateTurns(len(gameMap.MyBees))
 		newTime := gameMap.estimateTurns(len(gameMap.MyBees) + 1)
-		if (timeToEmpty - newTime > 30 && state.PlayerResources[player] > 6) { //TODO: smarter check
+		if timeToEmpty-newTime > 30 && state.PlayerResources[player] > 6 { //TODO: smarter check
 			orders = append(orders, spawnBee(coords, player))
 		}
 	}
@@ -172,7 +201,7 @@ func main() {
 		fmt.Println("Usage: ./agent <host> <gameid> <name>")
 		os.Exit(1)
 	}
-
+	exploring = true
 	gameMap = NewGameMap()
 	host := os.Args[1]
 	id := os.Args[2]

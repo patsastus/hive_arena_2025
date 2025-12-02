@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	. "hive-arena/common"
+	"math"
 	"os"
 )
 
@@ -20,6 +21,7 @@ var directionToOffset = map[Direction]Coords{
 const (
 	UNKNOWN GameMapObjectType = iota
 	OWN_BEE
+	EXPLORER
 	ENEMY_BEE
 	OWN_HIVE
 	ENEMY_HIVE
@@ -41,27 +43,27 @@ type GameMapObject struct {
 }
 
 type GameMap struct {
-	Revealed     	map[Coords]Hex
-	MyBees		 	map[Coords]*Hex
-	MyHives      	map[Coords]bool
-	EnemyHives   	map[Coords]bool
-	FlowerFields 	map[Coords]bool
-	Mapped      	map[Coords]GameMapObject
-	Targeted		map[Coords]bool
-	Explorers	 	[]Coords
-	StillUnexplored	bool
+	Revealed        map[Coords]Hex
+	MyBees          map[Coords]*Hex
+	MyHives         map[Coords]bool
+	EnemyHives      map[Coords]bool
+	FlowerFields    map[Coords]bool
+	Mapped          map[Coords]GameMapObject
+	Targeted        map[Coords]bool
+	Explorers       []Coords
+	StillUnexplored bool
 }
 
 func NewGameMap() GameMap {
 	return GameMap{
 		Revealed:     make(map[Coords]Hex),
-		MyBees:		  make(map[Coords]*Hex),
+		MyBees:       make(map[Coords]*Hex),
 		MyHives:      make(map[Coords]bool),
 		EnemyHives:   make(map[Coords]bool),
 		FlowerFields: make(map[Coords]bool),
-		Targeted:	  make(map[Coords]bool),
+		Targeted:     make(map[Coords]bool),
 		Mapped:       make(map[Coords]GameMapObject),
-		Explorers:	  make([]Coords, 2),
+		Explorers:    make([]Coords, 2),
 	}
 }
 
@@ -85,12 +87,107 @@ func (gm *GameMap) MarkAsEdge(c Coords) {
 		}
 	}
 }
+func (gm *GameMap) ExpandFringe() {
+
+	// 1. Snapshot keys to avoid "concurrent map iteration" panic
+	var currentKeys []Coords
+	for c := range gm.Mapped {
+		currentKeys = append(currentKeys, c)
+	}
+
+	// 2. Iterate
+	for _, c := range currentKeys {
+		tile := gm.Mapped[c]
+
+		if tile.Type == UNKNOWN || tile.Type == EDGE {
+			continue
+		}
+
+		for _, offset := range directionToOffset {
+			neighbor := addCoords(c, offset)
+
+			if neighbor.Row < 0 || neighbor.Col < 0 {
+				continue
+			}
+			// 3. Check neighbor
+			_, exists := gm.Mapped[neighbor]
+
+			if !exists {
+				// Add the fringe tile
+				gm.Mapped[neighbor] = GameMapObject{
+					Type: UNKNOWN,
+				}
+			}
+		}
+	}
+}
+
+func (gm *GameMap) updateExploringStatus() {
+	fmt.Println("MY BEE COUNT: ", len(gm.MyBees))
+	fmt.Println("EXPLORING: ", exploring)
+	// Set exploring status based on number of unknown tiles
+	if exploring {
+		unknown_count := 0
+		for _, tile := range gm.Mapped {
+			if tile.Type == UNKNOWN {
+				unknown_count++
+			}
+		}
+		if unknown_count == 0 {
+			exploring = false
+		}
+		fmt.Println("UNKNOWN COUNT: ", unknown_count)
+	}
+	// Assign an explorer role to the bee furthest from a hive not carrying a flower if there are more than 2 bees
+	if exploring && len(gm.MyBees) > 2 {
+
+		var bestExplorerCoords Coords
+		// This tracks the best distance found across ALL bees
+		shortestGlobalDistance := math.MaxInt16
+
+		// Loop 1: Check every bee
+		for beeCoords, bee := range gm.MyBees {
+			if bee.Entity.HasFlower {
+				continue
+			}
+
+			// RESET PER BEE: This tracks the closest unknown for THIS specific bee
+			myClosestDist := math.MaxInt16
+
+			// Loop 2: Check every unknown tile
+			for unknownCoords, tile := range gm.Mapped {
+				if tile.Type == UNKNOWN {
+					d := dist(unknownCoords, beeCoords)
+					if d < myClosestDist {
+						myClosestDist = d
+					}
+				}
+			}
+
+			// Compare this bee against the current champion
+			if myClosestDist < shortestGlobalDistance {
+				shortestGlobalDistance = myClosestDist
+				bestExplorerCoords = beeCoords
+			}
+		}
+
+		// Apply the role to the winner
+		if shortestGlobalDistance != math.MaxInt16 {
+			explorerTile := gm.Mapped[bestExplorerCoords]
+			// Assuming you added EXPLORER to your enum or want to overwrite Type
+			explorerTile.Type = EXPLORER
+			// Don't forget to save it back!
+			gm.Mapped[bestExplorerCoords] = explorerTile
+			fmt.Printf("Bee at %v assigned EXPLORER role (Dist: %d)\n", bestExplorerCoords, shortestGlobalDistance)
+		}
+	}
+}
 
 func (gm *GameMap) scanForEdges(viewer Coords, state *GameState) {
-	for _, offest := range directionToOffset {
+	for _, offset := range directionToOffset {
 		currentPos := viewer
 		for i := 0; i < 4; i++ {
-			nextPos := addCoords(currentPos, offest)
+			nextPos := addCoords(currentPos, offset)
 			_, nextExists := state.Hexes[nextPos]
 			if !nextExists {
 				if i < 3 {
@@ -109,7 +206,7 @@ func (gm *GameMap) scanForEdges(viewer Coords, state *GameState) {
 }
 
 func (gm *GameMap) updateGameMap(state *GameState, player int) {
-	clear(gm.MyBees) //remove all old bees from map
+	clear(gm.MyBees)   //remove all old bees from map
 	clear(gm.Targeted) //remove all targeted tiles from last turn
 	for coords, visibleHex := range state.Hexes {
 		gm.Revealed[coords] = *visibleHex
@@ -182,6 +279,7 @@ func (gm *GameMap) updateGameMap(state *GameState, player int) {
 		}
 	}
 }
+
 func (gm *GameMap) DumpToFile(filename string) error {
 
 	f, err := os.Create(filename)
@@ -247,6 +345,8 @@ func (gm *GameMap) DumpToFile(filename string) error {
 					}
 				case UNKNOWN:
 					symbol = "? "
+				case EXPLORER:
+					symbol = "O "
 				default:
 					symbol = "? "
 				}
