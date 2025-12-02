@@ -53,7 +53,6 @@ func goTo(loc, targetHex Coords) Order {
 	also return total distance ?
 */
 func aStar(loc, target Coords, stopNextTo bool, myMap *GameMap) Order {
-
 	startNode := &Node{
 		hex:	loc,
 		cost:	0,
@@ -61,7 +60,6 @@ func aStar(loc, target Coords, stopNextTo bool, myMap *GameMap) Order {
 		total:	dist(loc, target),
 		prev:	nil,
 	}
-
 	candidates := []*Node{startNode}
 	candidateMap := map[Coords]*Node{loc: startNode}
 	rejects	:= make(map[Coords]bool)
