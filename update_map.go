@@ -3,7 +3,6 @@ package main
 import (
 	"fmt"
 	. "hive-arena/common"
-	"math"
 	"os"
 )
 
@@ -122,6 +121,17 @@ func (gm *GameMap) ExpandFringe() {
 	}
 }
 
+func getDistanceToNearestHive(c Coords, gm *GameMap) int {
+	shortest := 10000
+	for hiveCoords := range gm.MyHives {
+		d := dist(c, hiveCoords)
+		if d < shortest {
+			shortest = d
+		}
+	}
+	return shortest
+}
+
 func (gm *GameMap) updateExploringStatus() {
 	fmt.Println("MY BEE COUNT: ", len(gm.MyBees))
 	fmt.Println("EXPLORING: ", exploring)
@@ -139,48 +149,6 @@ func (gm *GameMap) updateExploringStatus() {
 		fmt.Println("UNKNOWN COUNT: ", unknown_count)
 	}
 	// Assign an explorer role to the bee furthest from a hive not carrying a flower if there are more than 2 bees
-	if exploring && len(gm.MyBees) > 2 {
-
-		var bestExplorerCoords Coords
-		// This tracks the best distance found across ALL bees
-		shortestGlobalDistance := math.MaxInt16
-
-		// Loop 1: Check every bee
-		for beeCoords, bee := range gm.MyBees {
-			if bee.Entity.HasFlower {
-				continue
-			}
-
-			// RESET PER BEE: This tracks the closest unknown for THIS specific bee
-			myClosestDist := math.MaxInt16
-
-			// Loop 2: Check every unknown tile
-			for unknownCoords, tile := range gm.Mapped {
-				if tile.Type == UNKNOWN {
-					d := dist(unknownCoords, beeCoords)
-					if d < myClosestDist {
-						myClosestDist = d
-					}
-				}
-			}
-
-			// Compare this bee against the current champion
-			if myClosestDist < shortestGlobalDistance {
-				shortestGlobalDistance = myClosestDist
-				bestExplorerCoords = beeCoords
-			}
-		}
-
-		// Apply the role to the winner
-		if shortestGlobalDistance != math.MaxInt16 {
-			explorerTile := gm.Mapped[bestExplorerCoords]
-			// Assuming you added EXPLORER to your enum or want to overwrite Type
-			explorerTile.Type = EXPLORER
-			// Don't forget to save it back!
-			gm.Mapped[bestExplorerCoords] = explorerTile
-			fmt.Printf("Bee at %v assigned EXPLORER role (Dist: %d)\n", bestExplorerCoords, shortestGlobalDistance)
-		}
-	}
 }
 
 func (gm *GameMap) scanForEdges(viewer Coords, state *GameState) {
@@ -280,8 +248,14 @@ func (gm *GameMap) updateGameMap(state *GameState, player int) {
 	}
 }
 
-func (gm *GameMap) DumpToFile(filename string) error {
+func ClearScreen() {
+	// \033[2J  : Clear the entire screen
+	// \033[H   : Move cursor to the top-left (Home) position
+	fmt.Print("\033[2J\033[H")
+}
 
+func (gm *GameMap) DumpToFile(filename string) error {
+	ClearScreen()
 	f, err := os.Create(filename)
 	if err != nil {
 		return err
@@ -351,9 +325,53 @@ func (gm *GameMap) DumpToFile(filename string) error {
 					symbol = "? "
 				}
 			}
+			fmt.Print(symbol)
 			fmt.Fprint(f, symbol)
 		}
+		fmt.Print("\n")
 		fmt.Fprint(f, "\n")
 	}
+
 	return nil
 }
+
+/*
+
+	var bestExplorerCoords Coords
+	// This tracks the best distance found across ALL bees
+	longestDistanceFromHive := 0
+
+	// Loop 1: Check every bee
+	for beeCoords, bee := range gm.MyBees {
+		if bee.Entity.HasFlower {
+			continue
+		}
+
+		// RESET PER BEE: This tracks the closest unknown for THIS specific bee
+		myDistanceToHive := 0
+
+		// Loop 2: Check every unknown tile
+		for hiveCoords, _ := range gm.MyHives {
+			d := dist(hiveCoords, beeCoords)
+			if d > myDistanceToHive {
+				myDistanceToHive = d
+			}
+		}
+
+		// Compare this bee against the current champion
+		if myDistanceToHive > longestDistanceFromHive {
+			longestDistanceFromHive = myDistanceToHive
+			bestExplorerCoords = beeCoords
+		}
+	}
+
+	// Apply the role to the winner
+	if longestDistanceFromHive != 0 {
+		explorerTile := gm.Mapped[bestExplorerCoords]
+		// Assuming you added EXPLORER to your enum or want to overwrite Type
+		explorerTile.Type = EXPLORER
+		// Don't forget to save it back!
+		gm.Mapped[bestExplorerCoords] = explorerTile
+		fmt.Printf("Bee at %v assigned EXPLORER role (Dist: %d)\n", bestExplorerCoords, longestDistanceFromHive)
+	}
+*/

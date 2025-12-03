@@ -7,12 +7,19 @@ import (
 	"os"
 
 	. "hive-arena/common"
+	// "archive/tar"
 	// "github.com/go-text/typesetting/di"
 )
 
 var dirs = []Direction{E, SE, SW, W, NW, NE}
 var gameMap GameMap
 var exploring bool
+
+var previousDirection Coords
+var activeExplorerCoords Coords
+var previousExplorerCoords Coords
+var hasExplorer bool = false
+var explorerTarget = Coords{Row: -100, Col: -100}
 
 func dist(one, two Coords) int {
 	dx := one.Row - two.Row
@@ -29,6 +36,74 @@ func dist(one, two Coords) int {
 		return dx
 	}
 	return dx + (dy-dx)/2
+}
+
+func IdentifyExplorer(gm *GameMap) {
+	// 1. If we didn't have an explorer, try to recruit one
+	if !hasExplorer {
+		RecruitNewExplorer(gm)
+		return
+	}
+
+	// 2. We had an explorer. Find where they went.
+	// Logic: The explorer must be at 'previousExplorerCoords' OR an adjacent tile.
+
+	// Check the exact old spot first (maybe they didn't move)
+	if isMyBee(previousExplorerCoords, gm) {
+		activeExplorerCoords = previousExplorerCoords
+		return
+	}
+
+	// Check neighbors (maybe they moved)
+	for _, offset := range directionToOffset {
+		neighbor := addCoords(previousExplorerCoords, offset)
+		if isMyBee(neighbor, gm) {
+			activeExplorerCoords = neighbor
+			// Found them! Update the "previous" tracker for next turn
+			previousExplorerCoords = neighbor
+			return
+		}
+	}
+
+	// 3. If we get here, we LOST the explorer (died or moved too far?)
+	// We must recruit a replacement.
+	fmt.Println("Explorer MIA! Recruiting replacement...")
+	RecruitNewExplorer(gm)
+}
+
+func isMyBee(c Coords, gm *GameMap) bool {
+	tile, ok := gm.Mapped[c]
+	return ok && tile.Type == OWN_BEE
+}
+
+func RecruitNewExplorer(gm *GameMap) {
+	// Simple logic: Pick bee furthest from Hive (closest to the unknown)
+	var bestBee Coords
+	maxDist := -1
+	found := false
+
+	for coords, tile := range gm.Mapped {
+		if tile.Type == OWN_BEE && !tile.BeeHasFlower {
+			d := getDistanceToNearestHive(coords, gm)
+			if d > maxDist {
+				maxDist = d
+				bestBee = coords
+				found = true
+			}
+		}
+	}
+
+	if found {
+		activeExplorerCoords = bestBee
+		previousExplorerCoords = bestBee
+		hasExplorer = true
+		fmt.Printf("Recruited NEW Explorer at %v\n", bestBee)
+		tile := gameMap.Mapped[activeExplorerCoords]
+		tile.Type = EXPLORER
+		gameMap.Mapped[activeExplorerCoords] = tile
+	} else {
+		hasExplorer = false
+	}
 }
 
 func goHome(h Hex, coords Coords) Order {
@@ -103,18 +178,31 @@ func (gm *GameMap) getNearestFlower(coords Coords) Coords {
 }
 
 func (gm *GameMap) getNearestUnknown(coords Coords) Coords {
-	distance := math.MaxInt16
-	target := Coords{}
-	for temp, tile := range gm.Mapped {
-		temp_distance := dist(coords, temp)
-		if tile.Type == UNKNOWN && temp_distance < distance {
-			distance = temp_distance
-			target = temp
+	if explorerTarget.Row != -100 {
+		tile, exists := gm.Mapped[explorerTarget]
+		if exists && tile.Type == UNKNOWN {
+			return explorerTarget
 		}
 	}
-	fmt.Println("Bee location\t: ", coords)
-	fmt.Println("Nearest unknown\t: ", target)
-	return target
+	distance := math.MaxInt16
+	target := Coords{}
+	found := false
+	for temp, tile := range gm.Mapped {
+		if tile.Type == UNKNOWN {
+			temp_distance := dist(coords, temp)
+			if temp_distance < distance {
+				distance = temp_distance
+				target = temp
+				found = true
+			}
+		}
+	}
+	if found {
+		fmt.Println("New Explorer Target Acquired: ", target)
+		explorerTarget = target
+		return target
+	}
+	return coords
 }
 
 func beeOrder(h Hex, coords Coords, player int) Order {
@@ -142,15 +230,25 @@ func beeOrder(h Hex, coords Coords, player int) Order {
 
 func exploreOrder(h Hex, coords Coords, player int) Order {
 	target := gameMap.getNearestUnknown(coords)
-	temp := aStar(coords, target, false, &gameMap)
+	if target == coords {
+		println("Used bee coords")
+		return (Order{ //fallback: random move
+			Type:      MOVE,
+			Coords:    coords,
+			Direction: dirs[rand.Intn(len(dirs))],
+		})
+
+	}
+	temp := aStar(coords, target, true, &gameMap)
 	if (temp != Order{}) {
 		return temp
 	}
-	return (Order{ //fallback: random move
+	// If A* still fails (e.g., surrounded by rocks), try random move
+	return Order{
 		Type:      MOVE,
 		Coords:    coords,
 		Direction: dirs[rand.Intn(len(dirs))],
-	})
+	}
 }
 
 func spawnBee(c Coords, player int) Order {
@@ -171,6 +269,12 @@ func think(state *GameState, player int) []Order {
 	gameMap.updateGameMap(state, player)
 	gameMap.ExpandFringe()
 	gameMap.updateExploringStatus()
+	if exploring && len(gameMap.MyBees) > 2 {
+		RecruitNewExplorer(&gameMap)
+	}
+	if exploring && len(gameMap.MyBees) > 2 {
+
+	}
 	for coords, hex := range gameMap.MyBees { //first, order flowerbees
 		if hex != nil && hex.Entity.HasFlower {
 			orders = append(orders, beeOrder(*hex, coords, player))
@@ -180,7 +284,6 @@ func think(state *GameState, player int) []Order {
 		if hex != nil && !hex.Entity.HasFlower {
 			if exploring && gameMap.Mapped[coords].Type == EXPLORER {
 				orders = append(orders, exploreOrder(*hex, coords, player))
-				fmt.Println("Giving explore order, exploring is ", exploring)
 			} else {
 				orders = append(orders, beeOrder(*hex, coords, player))
 			}
