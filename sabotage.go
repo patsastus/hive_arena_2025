@@ -28,15 +28,20 @@ func (gm *GameMap) findFlanks(hive, blocker Coords) (Coords, Coords) {
 func (gm *GameMap) makeBlockTargets() {
 	for hive, _ := range gm.EnemyHives {
 		if gm.IsBlocking[hive] {continue}
-		bestFlanks := 0
-		bestTarget := Coords{}
+		bestFlanks := -1
+		bestTarget := Coords{Row: -100, Col:-100}
+		fallBack := Coords{Row: -100, Col:-100}
 		for _, dir := range dirs {
 			target := getCoords(hive, dir)
-			if (!gm.Mapped[target].IsWalkable) {continue}
+			fmt.Printf("checking %v ", target)
+			tile := gm.Mapped[target]
+			isObstacle := !tile.IsWalkable && tile.Type != UNKNOWN
+			if isObstacle {continue}
+			if fallBack.Row == -100 { fallBack = target }
 			flankOne, flankTwo := gm.findFlanks(hive, target)
 			numFlanks := 0
-			if gm.Mapped[flankOne].IsWalkable {numFlanks++}
-			if gm.Mapped[flankTwo].IsWalkable {numFlanks++}
+			if gm.Mapped[flankOne].IsWalkable || gm.Mapped[flankOne].Type == UNKNOWN {numFlanks++}
+			if gm.Mapped[flankTwo].IsWalkable || gm.Mapped[flankTwo].Type == UNKNOWN {numFlanks++}
 			if numFlanks == 2 {
 				bestFlanks = 2
 				bestTarget = target
@@ -47,8 +52,13 @@ func (gm *GameMap) makeBlockTargets() {
 				bestTarget = target
 			}
 		}
-		gm.BlockerTargets[hive] = bestTarget
-//		fmt.Printf("best target of %v is %v\n", hive, bestTarget)
+		if bestTarget.Row != -100 {
+			gm.BlockerTargets[hive] = bestTarget
+			fmt.Printf("location selected %v", bestTarget)
+		} else if fallBack.Row != -100 {
+			gm.BlockerTargets[hive] = fallBack
+			fmt.Printf("fallback location selected %v", fallBack)
+		}
 	}
 }
 
