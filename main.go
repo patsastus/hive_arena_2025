@@ -169,19 +169,37 @@ func think(state *GameState, player int) []Order {
 	gameMap.updateBlockers()
 	if (gameMap.TargetHive == Coords{}) {
 		newBlocker := (len(gameMap.MyBees) >= BeesPerHive * len(gameMap.MyHives))
-		if newBlocker && gameMap.blockerCount() < state.NumPlayers {//we should make a new blocker
-			for hive, alreadyBlocked := range gameMap.IsBlocking { 
-				if !alreadyBlocked { //reject hives already blocked
+		fmt.Printf("[TURN %d DEBUG] Blocker Check: Bees=%d/%d | CurrentBlockers=%d | AllowNew=%v\n", state.Turn, len(gameMap.MyBees), BeesPerHive * len(gameMap.MyHives), gameMap.blockerCount(), newBlocker)
+		if newBlocker && gameMap.blockerCount() < state.NumPlayers - 1 {//we should make a new blocker
+			for hive, _ := range gameMap.EnemyHives { 
+				if !gameMap.IsBlocking[hive] { //reject hives already blocked
 					gameMap.TargetHive = hive	//set this hive as target
 					target := gameMap.BlockerTargets[hive] //target for the bee to go to
 					nearestBee := gameMap.getNearestFreeBee(target)
+					fmt.Printf("[TURN %d DEBUG] ⚔️ ASSIGNING BLOCKER! Bee %v -> Hive %v (Target Spot: %v)\n", state.Turn, nearestBee, hive, target)
 					gameMap.BlockerPositions[0] = nearestBee
 					orders = append(orders, gameMap.goSabotage(hive, target, nearestBee))
 					break
 				}
 			}
-			
 		}
+	} else {
+		bee := gameMap.BlockerPositions[0]
+		target := gameMap.BlockerTargets[gameMap.TargetHive]
+		fmt.Printf("[TURN %d DEBUG] 🏃 Blocker %v is moving toward %v\n", state.Turn, bee, target)
+		orders = append(orders, gameMap.goSabotage(gameMap.TargetHive, target, bee))
+	}
+
+	//permablockers logic
+	for bee, _ := range gameMap.MySaboteurs {
+		targetHive := Coords{}
+		for hive, _ := range gameMap.EnemyHives {
+			if dist(hive, bee) == 1 {
+				targetHive = hive
+				break
+			}
+		}
+		orders = append(orders, gameMap.attackOrWait(targetHive, bee))
 	}
 		
 

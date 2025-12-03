@@ -47,18 +47,18 @@ func (gm *GameMap) makeBlockTargets() {
 				bestTarget = target
 			}
 		}
-		gm.BlockerTargets[hive] = append(gm.BlockerTargets[hive], bestTarget)
-		fmt.Println("best target of %v is %v\n", hive, bestTarget)
+		gm.BlockerTargets[hive] = bestTarget
+//		fmt.Printf("best target of %v is %v\n", hive, bestTarget)
 	}
 }
 
 func (gm *GameMap) attackOrWait(hive, bee Coords) Order {
-	flanks := gm.findFlanks(hive, bee)
+	flankOne, flankTwo := gm.findFlanks(hive, bee)
 	target := Coords{}
-	if gm.Mapped[flanks[0]].Type == ENEMY_BEE {
-		target = flanks[0]
-	} else if gm.Mapped[flanks[1]].Type == ENEMY_BEE {
-		target = flanks[1]
+	if gm.Mapped[flankOne].Type == ENEMY_BEE {
+		target = flankOne
+	} else if gm.Mapped[flankTwo].Type == ENEMY_BEE {
+		target = flankTwo
 	} else {
 		for _, dir := range dirs {
 			temp := getCoords(bee, dir)
@@ -78,8 +78,8 @@ func (gm *GameMap) attackOrWait(hive, bee Coords) Order {
 }
 
 func (gm *GameMap) blockerCount() int{
-	sum = 0;
-	for hive, blocked := range gm.IsBlocking {
+	sum := 0;
+	for _, blocked := range gm.IsBlocking {
 		if (blocked) { sum++ }
 	}
 	return sum
@@ -90,6 +90,7 @@ func (gm *GameMap) goSabotage(hive, target, bee Coords) Order {
 		gm.IsBlocking[hive] = true
 		gm.MySaboteurs[bee] = true
 		if gm.TargetHive == hive { //reset targets if this is the first time this bee is in the correct place
+			fmt.Printf("[DEBUG] 🛑 BLOCKER ARRIVED at %v! Locking down hive %v.\n", bee, hive)
 			gm.TargetHive = Coords{}
 			clear(gm.BlockerPositions)
 		}
