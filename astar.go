@@ -18,6 +18,18 @@ func sortByTotal(candidates []*Node) {
     })
 }
 
+func getCoords(loc Coords, dir Direction) Coords {
+    offset, ok := DirectionToOffset[dir]
+    if !ok {
+        return Coords{}
+    }
+    target := Coords{
+        Row: loc.Row + offset.Row,
+        Col: loc.Col + offset.Col,
+    }
+    return target
+}
+
 func getDirection(loc, target Coords) (Direction, bool) {
 	offset := Coords{
 		Row: target.Row - loc.Row,

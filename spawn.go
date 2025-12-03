@@ -31,6 +31,9 @@ func (gm *GameMap) hiveScore(coords Coords, radius int) float64 {
 }
 
 func (gm *GameMap) updateBuilderLoc() {
+	if _, exists := gm.MyBees[gm.Builders[1]]; exists {  //assign a boolean to 'exists'; then use it. If true, builder bee is in expected position
+		gm.Builders[0] = gm.Builders[1] //update the position of the builder
+	}
 }
 
 //returns the coordinates of the best hive position and a score of how many flowers are nearby
@@ -107,7 +110,7 @@ func (gm *GameMap) turnsUntilDepleted() int{
 }
 
 
-//calculate the effect of spawning a new bee, and return whether we'll break even on the cost by 
+/*//calculate the effect of spawning a new bee, and return whether we'll break even on the cost by 
 //the time all flowers are depleted (at current estimated rate). slightly overeager spawn?
 //because collection rate probably going up early on
 func (gm *GameMap) BreakEven(hive Coords) bool {
@@ -115,4 +118,38 @@ func (gm *GameMap) BreakEven(hive Coords) bool {
 	newFPT := gm.estimateFlowersPerTurn(len(gm.MyBees) + 1)
 	if (newFPT - currentFPT) * float64( gm.turnsUntilDepleted() ) < 6 { return false }
 	return true
+}
+*/
+
+func (gm *GameMap) BreakEven(hive Coords, beesNear int) bool {
+    localPotential := 0.0
+    for field, isField := range gm.FlowerFields {
+        if !isField { continue }
+        d := dist(hive, field)
+        if d == 0 { d = 1 } 
+        if d <= 12 {
+            localPotential += float64(gm.Mapped[field].Flowers) / float64(d)
+        }
+    }
+    if beesNear == 0 { beesNear++ }
+    score := localPotential / float64(beesNear)
+
+    // DEBUG
+	fmt.Printf("Hive %v Score: %.2f (Pot: %.1f / Bees: %.1f)\n", hive, score, localPotential, beesNear)
+
+    // Tune this number! Start low (0.5) and raise it if you overspawn.
+    return score > 0.5
+}
+
+func (gm *GameMap) goBuild() Order {
+	if gm.Builders[0] != gm.BuildTarget {
+		temp := aStar(gm.Builders[0], gm.BuildTarget, false, gm)
+		gm.Builders[1] = getCoords(gm.Builders[0], temp.Direction)
+		return temp
+	}
+	gm.IsBuilding = false
+	return (Order{
+		Type:      BUILD_HIVE,
+		Coords:    gm.Builders[0],
+	})
 }

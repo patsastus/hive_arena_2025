@@ -43,6 +43,7 @@ type GameMapObject struct {
 type GameMap struct {
 	Revealed     	map[Coords]Hex
 	MyBees		 	map[Coords]*Hex
+	MySaboteurs    	map[Coords]bool
 	MyHives      	map[Coords]bool
 	EnemyHives   	map[Coords]bool
 	FlowerFields 	map[Coords]bool
@@ -55,6 +56,10 @@ type GameMap struct {
 	Builders		[]Coords
 	IsBuilding		bool
 	BuildTarget		Coords
+	IsBlocking		map[Coords]bool
+	BlockerTargets	map[Coords]Coords //map of enemy hive coordinates to blocker target coordinates
+	BlockerPositions []Coords
+	TargetHive		Coords
 }
 
 func NewGameMap() GameMap {
@@ -68,6 +73,10 @@ func NewGameMap() GameMap {
 		Mapped:       make(map[Coords]GameMapObject),
 		Explorers:	  make([]Coords, 2),
 		Builders:	  make([]Coords, 2),
+		BlockerTargets: make(map[Coords]Coords),
+		IsBlocking:	  make(map[Coords]bool),
+		BlockerPositions: make([]Coords, 2),
+		MySaboteurs:   make(map[Coords]bool),
 	}
 }
 
@@ -118,8 +127,6 @@ func (gm *GameMap) updateGameMap(state *GameState, player int) {
 	clear(gm.MyBees) //remove all old bees from map
 	gm.EnemyBees = 0	//forget old bees
 	clear(gm.Targeted) //remove all targeted tiles from last turn
-	gm.FlowerCount = 0
-
 	for coords, visibleHex := range state.Hexes {
 		gm.Revealed[coords] = *visibleHex
 		index := 0
@@ -191,6 +198,12 @@ func (gm *GameMap) updateGameMap(state *GameState, player int) {
 			gm.scanForEdges(coords, state)
 		}
 	}
+	gm.FlowerCount = 0
+	for coords, isField := range gm.FlowerFields {
+        if isField {
+            gm.FlowerCount += gm.Mapped[coords].Flowers
+        }
+    }
 }
 func (gm *GameMap) DumpToFile(filename string) error {
 
