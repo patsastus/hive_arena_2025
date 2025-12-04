@@ -170,7 +170,16 @@ func (gm *GameMap) goBuild() Order {
 	if gm.Builders[0] != gm.BuildTarget {
 		temp := aStar(gm.Builders[0], gm.BuildTarget, false, gm)
 		gm.Builders[1] = getCoords(gm.Builders[0], temp.Direction)
-		return temp
+		if temp != (Order{}) {
+			return temp
+		}
+	}
+	if dist(gm.BuildTarget, gm.Builders[0]) > 1  && (gm.Mapped[gm.BuildTarget].Type == ENEMY_HIVE || gm.Mapped[gm.BuildTarget].Type == ENEMY_WALL) {
+		temp := aStar(gm.Builders[0], gm.BuildTarget, true, gm)
+		gm.Builders[1] = getCoords(gm.Builders[0], temp.Direction)
+		if temp != (Order{}) {
+			return temp
+		}
 	}
 	gm.IsBuilding = false
 	HasExplorer = false

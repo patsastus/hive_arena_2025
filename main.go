@@ -268,15 +268,17 @@ func think(state *GameState, player int) []Order {
 	gameMap.updateBuilderLoc()
 	loc, score := gameMap.bestNewHivePos()
 	if !exploring || Unknown_count < 7 || score > ScoreThreshold {
-		should_build_hive = true
-		if len(gameMap.MyHives) < 2 && state.PlayerResources[player] >= 12 {
-			println("score: ", score)
-			println("scorethreshold: ", ScoreThreshold)
-			gameMap.IsBuilding = true
-			gameMap.BuildTarget = loc
-			gameMap.Builders[0] = gameMap.getNearestFreeBee(loc)
-			should_build_hive = false
-			orders = append(orders, gameMap.goBuild())
+		if score > 90 {
+			should_build_hive = true
+			if len(gameMap.MyHives) < 2 && state.PlayerResources[player] >= 12{
+				println("score: ", score)
+				println("scorethreshold: ", ScoreThreshold)
+				gameMap.IsBuilding = true
+				gameMap.BuildTarget = loc
+				gameMap.Builders[0] = gameMap.getNearestFreeBee(loc)
+				should_build_hive = false
+				orders = append(orders, gameMap.goBuild())
+			}
 		}
 	}
 	if len(gameMap.MyHives) >= 2 {
@@ -378,7 +380,7 @@ func think(state *GameState, player int) []Order {
 }
 
 func main() {
-	// flag.IntVar(&BeesPerHive, "bees", 5, "Target number of bees per hive")
+	flag.IntVar(&BeesPerHive, "bees", 5, "Target number of bees per hive")
 	// flag.Float64Var(&ScoreThreshold, "score", 50.0, "Score threshold for new hive")
 
 	flag.Parse()
