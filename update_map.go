@@ -42,15 +42,25 @@ type GameMapObject struct {
 }
 
 type GameMap struct {
-	Revealed        map[Coords]Hex
-	MyBees          map[Coords]*Hex
-	MyHives         map[Coords]bool
-	EnemyHives      map[Coords]bool
-	FlowerFields    map[Coords]bool
-	Mapped          map[Coords]GameMapObject
-	Targeted        map[Coords]bool
-	Explorers       []Coords
-	StillUnexplored bool
+	Revealed     	map[Coords]Hex
+	MyBees		 	map[Coords]*Hex
+	MySaboteurs    	map[Coords]bool
+	MyHives      	map[Coords]bool
+	EnemyHives   	map[Coords]bool
+	FlowerFields 	map[Coords]bool
+	Mapped      	map[Coords]GameMapObject
+	Targeted		map[Coords]bool
+	Explorers	 	[]Coords
+	StillUnexplored	bool
+	EnemyBees		int
+	FlowerCount		uint
+	Builders		[]Coords
+	IsBuilding		bool
+	BuildTarget		Coords
+	IsBlocking		map[Coords]bool
+	BlockerTargets	map[Coords]Coords //map of enemy hive coordinates to blocker target coordinates
+	BlockerPositions []Coords
+	TargetHive		Coords
 }
 
 func NewGameMap() GameMap {
@@ -62,7 +72,12 @@ func NewGameMap() GameMap {
 		FlowerFields: make(map[Coords]bool),
 		Targeted:     make(map[Coords]bool),
 		Mapped:       make(map[Coords]GameMapObject),
-		Explorers:    make([]Coords, 2),
+		Explorers:	  make([]Coords, 2),
+		Builders:	  make([]Coords, 2),
+		BlockerTargets: make(map[Coords]Coords),
+		IsBlocking:	  make(map[Coords]bool),
+		BlockerPositions: make([]Coords, 2),
+		MySaboteurs:   make(map[Coords]bool),
 	}
 }
 
@@ -174,7 +189,8 @@ func (gm *GameMap) scanForEdges(viewer Coords, state *GameState) {
 }
 
 func (gm *GameMap) updateGameMap(state *GameState, player int) {
-	clear(gm.MyBees)   //remove all old bees from map
+	clear(gm.MyBees) //remove all old bees from map
+	gm.EnemyBees = 0	//forget old bees
 	clear(gm.Targeted) //remove all targeted tiles from last turn
 	for coords, visibleHex := range state.Hexes {
 		gm.Revealed[coords] = *visibleHex
@@ -204,6 +220,7 @@ func (gm *GameMap) updateGameMap(state *GameState, player int) {
 				tile.Player = unit.Player
 				tile.BeeHasFlower = unit.HasFlower
 			} else {
+				gm.EnemyBees++
 				tile.Type = ENEMY_BEE
 				tile.Player = unit.Player
 				tile.BeeHasFlower = unit.HasFlower
@@ -227,11 +244,11 @@ func (gm *GameMap) updateGameMap(state *GameState, player int) {
 				}
 			}
 		}
-
 		if visibleHex.Resources > 0 {
 			tile.IsFlowerField = true
 			tile.Flowers = visibleHex.Resources
 			gm.FlowerFields[coords] = true
+			gm.FlowerCount += tile.Flowers
 		} else {
 			tile.IsFlowerField = false
 			tile.Flowers = 0
@@ -246,6 +263,12 @@ func (gm *GameMap) updateGameMap(state *GameState, player int) {
 			gm.scanForEdges(coords, state)
 		}
 	}
+	gm.FlowerCount = 0
+	for coords, isField := range gm.FlowerFields {
+        if isField {
+            gm.FlowerCount += gm.Mapped[coords].Flowers
+        }
+    }
 }
 
 func ClearScreen() {

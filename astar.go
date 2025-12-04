@@ -18,6 +18,18 @@ func sortByTotal(candidates []*Node) {
     })
 }
 
+func getCoords(loc Coords, dir Direction) Coords {
+    offset, ok := DirectionToOffset[dir]
+    if !ok {
+        return Coords{}
+    }
+    target := Coords{
+        Row: loc.Row + offset.Row,
+        Col: loc.Col + offset.Col,
+    }
+    return target
+}
+
 func getDirection(loc, target Coords) (Direction, bool) {
 	offset := Coords{
 		Row: target.Row - loc.Row,
@@ -31,17 +43,23 @@ func getDirection(loc, target Coords) (Direction, bool) {
     return "", false // Return empty string and false if no match
 }
 
-func goTo(loc, targetHex Coords) Order {
+func goTo(loc, targetHex Coords, myMap *GameMap) Order {
 	dir, found := getDirection(loc, targetHex)
 	if (!found) {
 		fmt.Println("goTo got invalid source/target combo")
 		dir = dirs[rand.Intn(len(dirs))]
 	}
-    return Order{
+	o := Order{
         Type: MOVE,
         Coords: loc,
 		Direction: dir,
     }
+	if myMap.Mapped[targetHex].Type == ENEMY_WALL {
+		o.Type = ATTACK
+	} else {
+		myMap.Targeted[targetHex] = true
+	}
+	return o
 }
 
 /*
@@ -73,7 +91,7 @@ func aStar(loc, target Coords, stopNextTo bool, myMap *GameMap) Order {
 		nextToTarget := stopNextTo && dist(current.hex, target) == 1 //target isn't walkable and next to it
 		if atTarget || nextToTarget { //loop back to the first step
 			for current.prev != nil && current.prev.hex != loc { current = current.prev }
-			return goTo(loc, current.hex)
+			return goTo(loc, current.hex, myMap)
 		}
 
 		rejects[current.hex] = true //never come back here
@@ -83,11 +101,14 @@ func aStar(loc, target Coords, stopNextTo bool, myMap *GameMap) Order {
 				Col: current.hex.Col + offset.Col,
     		}
 			neighborGMO := myMap.Mapped[neighborCoords]
-			if (neighborGMO == (GameMapObject{}) || (neighborGMO.Type != EMPTY_HEX)){ //TODO: check flowerfield hex-type
-				continue
+			if (neighborGMO == (GameMapObject{}) ||
+				myMap.Targeted[neighborCoords] ||
+				!(neighborGMO.Type == EMPTY_HEX || neighborGMO.Type == ENEMY_WALL)) { 
+				continue 
 			}
 			if rejects[neighborCoords] { continue }
-			neighborCost := current.cost + 1 //alternate cost for breakable walls?
+			neighborCost := current.cost + 1
+			if neighborGMO.Type == ENEMY_WALL { neighborCost += 6 }
 			cand, exists := candidateMap[neighborCoords] //looks for the candidate coordinates in the candidate map (exists is a bool whether the key was found, cand is a Coord struct that is either a value or nil
 			if exists { //if location was already in candidates, check and update if better than old version
 				if neighborCost >= cand.cost { continue }

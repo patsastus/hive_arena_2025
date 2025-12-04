@@ -113,7 +113,7 @@ func Run(host string, id string, name string, callback func(*GameState, int) []O
 		orders := callback(&state, playerInfo.Id)
 		sendOrders(host, id, playerInfo.Token, orders)
 		if playerInfo.Id == 0 {
-			gameMap.DumpToFile("map.txt")
+//			gameMap.DumpToFile("map.txt")
 		}
 	}
 
