@@ -46,7 +46,7 @@ func (gm *GameMap) bestNewHivePos() (Coords, float64) {
 	bestLocation := Coords{}
 	const ( //tunable constants
 		minDToOwn   = 6.0
-		minDToEnemy = 12.0
+		minDToEnemy = 2.0
 		wExpansion  = 0.10
 		scanRadius  = 5
 	)
