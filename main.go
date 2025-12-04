@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"flag"
 	"math"
 	"math/rand"
 	"os"
@@ -18,6 +19,13 @@ var activeExplorerCoords Coords
 var previousExplorerCoords Coords
 var hasExplorer bool = false
 var explorerTarget = Coords{Row: -100, Col: -100}
+
+var (
+	BeesPerHive int = 5
+	ScoreThreshold float64 = 50.0
+)
+
+
 
 func dist(one, two Coords) int {
 	dx := one.Row - two.Row
@@ -246,11 +254,6 @@ func (gm *GameMap) getNearestFreeBee(c Coords) Coords {
 	return closest
 }
 
-const (
-	BeesPerHive = 5
-	ScoreThreshold = 50.0
-)
-
 func think(state *GameState, player int) []Order {
 	var orders []Order
 	gameMap.updateGameMap(state, player)
@@ -370,15 +373,22 @@ func think(state *GameState, player int) []Order {
 }
 
 func main() {
-	if len(os.Args) <= 3 {
-		fmt.Println("Usage: ./agent <host> <gameid> <name>")
-		os.Exit(1)
-	}
+	flag.IntVar(&BeesPerHive, "bees", 5, "Target number of bees per hive")
+    flag.Float64Var(&ScoreThreshold, "score", 50.0, "Score threshold for new hive")
+  
+	flag.Parse()
+	
+	args := flag.Args()
+	if len(args) < 3 {
+        fmt.Println("Usage: ./agent [flags] <host> <gameid> <name>")
+        os.Exit(1)
+    }
+
 	exploring = true
 	gameMap = NewGameMap()
-	host := os.Args[1]
-	id := os.Args[2]
-	name := os.Args[3]
+	host := args[0]
+	id := args[1]
+	name := args[2]
 
 	Run(host, id, name, think)
 }
