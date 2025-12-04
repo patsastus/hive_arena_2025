@@ -42,27 +42,42 @@ type GameMapObject struct {
 }
 
 type GameMap struct {
-	Revealed        map[Coords]Hex
-	MyBees          map[Coords]*Hex
-	MyHives         map[Coords]bool
-	EnemyHives      map[Coords]bool
-	FlowerFields    map[Coords]bool
-	Mapped          map[Coords]GameMapObject
-	Targeted        map[Coords]bool
-	Explorers       []Coords
-	StillUnexplored bool
+	Revealed         map[Coords]Hex
+	MyBees           map[Coords]*Hex
+	MySaboteurs      map[Coords]bool
+	MyHives          map[Coords]bool
+	EnemyHives       map[Coords]bool
+	FlowerFields     map[Coords]bool
+	Mapped           map[Coords]GameMapObject
+	Targeted         map[Coords]bool
+	Explorers        []Coords
+	StillUnexplored  bool
+	EnemyBees        int
+	FlowerCount      uint
+	Builders         []Coords
+	IsBuilding       bool
+	BuildTarget      Coords
+	IsBlocking       map[Coords]bool
+	BlockerTargets   map[Coords]Coords //map of enemy hive coordinates to blocker target coordinates
+	BlockerPositions []Coords
+	TargetHive       Coords
 }
 
 func NewGameMap() GameMap {
 	return GameMap{
-		Revealed:     make(map[Coords]Hex),
-		MyBees:       make(map[Coords]*Hex),
-		MyHives:      make(map[Coords]bool),
-		EnemyHives:   make(map[Coords]bool),
-		FlowerFields: make(map[Coords]bool),
-		Targeted:     make(map[Coords]bool),
-		Mapped:       make(map[Coords]GameMapObject),
-		Explorers:    make([]Coords, 2),
+		Revealed:         make(map[Coords]Hex),
+		MyBees:           make(map[Coords]*Hex),
+		MyHives:          make(map[Coords]bool),
+		EnemyHives:       make(map[Coords]bool),
+		FlowerFields:     make(map[Coords]bool),
+		Targeted:         make(map[Coords]bool),
+		Mapped:           make(map[Coords]GameMapObject),
+		Explorers:        make([]Coords, 2),
+		Builders:         make([]Coords, 2),
+		BlockerTargets:   make(map[Coords]Coords),
+		IsBlocking:       make(map[Coords]bool),
+		BlockerPositions: make([]Coords, 2),
+		MySaboteurs:      make(map[Coords]bool),
 	}
 }
 
@@ -137,16 +152,16 @@ func (gm *GameMap) updateExploringStatus() {
 	fmt.Println("EXPLORING: ", exploring)
 	// Set exploring status based on number of unknown tiles
 	if exploring {
-		unknown_count := 0
+		Unknown_count = 0
 		for _, tile := range gm.Mapped {
 			if tile.Type == UNKNOWN {
-				unknown_count++
+				Unknown_count++
 			}
 		}
-		if unknown_count == 0 {
+		if Unknown_count == 0 {
 			exploring = false
 		}
-		fmt.Println("UNKNOWN COUNT: ", unknown_count)
+		fmt.Println("UNKNOWN COUNT: ", Unknown_count)
 	}
 	// Assign an explorer role to the bee furthest from a hive not carrying a flower if there are more than 2 bees
 }
@@ -175,6 +190,7 @@ func (gm *GameMap) scanForEdges(viewer Coords, state *GameState) {
 
 func (gm *GameMap) updateGameMap(state *GameState, player int) {
 	clear(gm.MyBees)   //remove all old bees from map
+	gm.EnemyBees = 0   //forget old bees
 	clear(gm.Targeted) //remove all targeted tiles from last turn
 	for coords, visibleHex := range state.Hexes {
 		gm.Revealed[coords] = *visibleHex
@@ -244,6 +260,12 @@ func (gm *GameMap) updateGameMap(state *GameState, player int) {
 		unit := visibleHex.Entity
 		if unit != nil && unit.Player == player {
 			gm.scanForEdges(coords, state)
+		}
+	}
+	gm.FlowerCount = 0
+	for coords, isField := range gm.FlowerFields {
+		if isField {
+			gm.FlowerCount += gm.Mapped[coords].Flowers
 		}
 	}
 }
@@ -334,44 +356,3 @@ func (gm *GameMap) DumpToFile(filename string) error {
 
 	return nil
 }
-
-/*
-
-	var bestExplorerCoords Coords
-	// This tracks the best distance found across ALL bees
-	longestDistanceFromHive := 0
-
-	// Loop 1: Check every bee
-	for beeCoords, bee := range gm.MyBees {
-		if bee.Entity.HasFlower {
-			continue
-		}
-
-		// RESET PER BEE: This tracks the closest unknown for THIS specific bee
-		myDistanceToHive := 0
-
-		// Loop 2: Check every unknown tile
-		for hiveCoords, _ := range gm.MyHives {
-			d := dist(hiveCoords, beeCoords)
-			if d > myDistanceToHive {
-				myDistanceToHive = d
-			}
-		}
-
-		// Compare this bee against the current champion
-		if myDistanceToHive > longestDistanceFromHive {
-			longestDistanceFromHive = myDistanceToHive
-			bestExplorerCoords = beeCoords
-		}
-	}
-
-	// Apply the role to the winner
-	if longestDistanceFromHive != 0 {
-		explorerTile := gm.Mapped[bestExplorerCoords]
-		// Assuming you added EXPLORER to your enum or want to overwrite Type
-		explorerTile.Type = EXPLORER
-		// Don't forget to save it back!
-		gm.Mapped[bestExplorerCoords] = explorerTile
-		fmt.Printf("Bee at %v assigned EXPLORER role (Dist: %d)\n", bestExplorerCoords, longestDistanceFromHive)
-	}
-*/

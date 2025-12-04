@@ -14,6 +14,7 @@ import (
 var dirs = []Direction{E, SE, SW, W, NW, NE}
 var gameMap GameMap
 var exploring bool
+var Unknown_count = math.MaxInt16
 
 var previousDirection Coords
 var activeExplorerCoords Coords
@@ -264,6 +265,27 @@ func spawnBee(c Coords, player int) Order {
 	return Order{}
 }
 
+func (gm *GameMap) getNearestFreeBee(c Coords) Coords {
+	var closest Coords = Coords{}
+	distance := 20000
+	for loc, _ := range gm.MyBees {
+		if gm.Mapped[loc].BeeHasFlower {
+			continue
+		}
+		d := dist(loc, c)
+		if d < distance {
+			distance = d
+			closest = loc
+		}
+	}
+	return closest
+}
+
+const (
+	BeesPerHive    = 5
+	ScoreThreshold = 50.0
+)
+
 func think(state *GameState, player int) []Order {
 	var orders []Order
 	gameMap.updateGameMap(state, player)
@@ -272,15 +294,78 @@ func think(state *GameState, player int) []Order {
 	if exploring && len(gameMap.MyBees) > 2 {
 		RecruitNewExplorer(&gameMap)
 	}
-	if exploring && len(gameMap.MyBees) > 2 {
 
+	//building a new hive logic
+	gameMap.updateBuilderLoc()
+	if (exploring == false || Unknown_count <= 6) && len(gameMap.MyHives) < 2 && state.PlayerResources[player] >= 12 && state.Turn%10 == 0 {
+		gameMap.IsBuilding = true
+		loc, score := gameMap.bestNewHivePos()
+		if loc != gameMap.BuildTarget && score > ScoreThreshold {
+			gameMap.BuildTarget = loc
+			gameMap.Builders[0] = gameMap.getNearestFreeBee(loc)
+			orders = append(orders, gameMap.goBuild())
+		}
 	}
+	if gameMap.IsBuilding {
+		orders = append(orders, gameMap.goBuild())
+	}
+
+	//sending out blockers logic
+	gameMap.updateBlockers()
+	if (gameMap.TargetHive == Coords{}) {
+		newBlocker := (len(gameMap.MyBees) >= BeesPerHive*len(gameMap.MyHives))
+		fmt.Printf("[TURN %d DEBUG] Blocker Check: Bees=%d/%d | CurrentBlockers=%d | AllowNew=%v\n", state.Turn, len(gameMap.MyBees), BeesPerHive*len(gameMap.MyHives), gameMap.blockerCount(), newBlocker)
+		if !exploring && newBlocker && gameMap.blockerCount() < state.NumPlayers-1 { //we should make a new blocker
+			gameMap.makeBlockTargets()
+			for hive, _ := range gameMap.EnemyHives {
+				if !gameMap.IsBlocking[hive] { //reject hives already blocked
+					gameMap.TargetHive = hive              //set this hive as target
+					target := gameMap.BlockerTargets[hive] //target for the bee to go to
+					nearestBee := gameMap.getNearestFreeBee(target)
+					fmt.Printf("[TURN %d DEBUG] ⚔️ ASSIGNING BLOCKER! Bee %v -> Hive %v (Target Spot: %v)\n", state.Turn, nearestBee, hive, target)
+					gameMap.BlockerPositions[0] = nearestBee
+					orders = append(orders, gameMap.goSabotage(hive, target, nearestBee))
+					break
+				}
+			}
+		}
+	} else {
+		bee := gameMap.BlockerPositions[0]
+		target := gameMap.BlockerTargets[gameMap.TargetHive]
+		fmt.Printf("[TURN %d DEBUG] 🏃 Blocker %v is moving toward %v\n", state.Turn, bee, target)
+		orders = append(orders, gameMap.goSabotage(gameMap.TargetHive, target, bee))
+	}
+
+	//permablockers logic
+	for bee, _ := range gameMap.MySaboteurs {
+		targetHive := Coords{}
+		for hive, _ := range gameMap.EnemyHives {
+			if dist(hive, bee) == 1 {
+				targetHive = hive
+				break
+			}
+		}
+		orders = append(orders, gameMap.attackOrWait(targetHive, bee))
+	}
+
+	//basic bee logic
 	for coords, hex := range gameMap.MyBees { //first, order flowerbees
 		if hex != nil && hex.Entity.HasFlower {
 			orders = append(orders, beeOrder(*hex, coords, player))
 		}
 	}
 	for coords, hex := range gameMap.MyBees { //second, order free bees
+		isActiveBlocker := (coords == gameMap.BlockerPositions[0])
+		isSaboteur := gameMap.MySaboteurs[coords]
+
+		if isActiveBlocker || isSaboteur {
+			continue
+		}
+
+		// If we are building, and this is the designated builder
+		if gameMap.IsBuilding && coords == gameMap.Builders[0] {
+			continue
+		}
 		if hex != nil && !hex.Entity.HasFlower {
 			if exploring && gameMap.Mapped[coords].Type == EXPLORER {
 				orders = append(orders, exploreOrder(*hex, coords, player))
@@ -290,12 +375,33 @@ func think(state *GameState, player int) []Order {
 		}
 	}
 	for coords, _ := range gameMap.MyHives { //see if we should spawn bees
-		timeToEmpty := gameMap.estimateTurns(len(gameMap.MyBees))
-		newTime := gameMap.estimateTurns(len(gameMap.MyBees) + 1)
-		if timeToEmpty-newTime > 30 && state.PlayerResources[player] > 6 { //TODO: smarter check
-			orders = append(orders, spawnBee(coords, player))
+		if len(gameMap.MyBees) >= BeesPerHive*len(gameMap.MyHives)+gameMap.blockerCount() ||
+			int(gameMap.FlowerCount)/state.NumPlayers < 6 {
+			break
+		}
+		beesNear := 0
+		for bee := range gameMap.MyBees {
+			if dist(coords, bee) < 6 {
+				beesNear++
+			}
+		}
+
+		empty := beesNear < 3
+		isWorthIt := gameMap.BreakEven(coords, beesNear)
+		haveMoney := state.PlayerResources[player] >= 6
+
+		// PRINT THE TRUTH
+		//		fmt.Printf("[TURN %d] Hive %v Analysis:\n", state.Turn, coords)
+		//		fmt.Printf("\tBreakEven: %v\n", isWorthIt)
+		if (empty || isWorthIt) && haveMoney {
+			o := spawnBee(coords, player)
+			if o.Type == "" {
+				fmt.Printf("\tCRITICAL: Conditions met, but spawnBee returned empty! (Hive blocked?)\n")
+			}
+			orders = append(orders, o)
 		}
 	}
+	println("Unknown count: ", Unknown_count)
 	return orders
 }
 
