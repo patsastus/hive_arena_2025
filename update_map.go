@@ -17,6 +17,8 @@ var directionToOffset = map[Direction]Coords{
 	SE: {1, 1},
 }
 
+var Unknown_count int
+
 const (
 	UNKNOWN GameMapObjectType = iota
 	OWN_BEE
@@ -42,42 +44,42 @@ type GameMapObject struct {
 }
 
 type GameMap struct {
-	Revealed     	map[Coords]Hex
-	MyBees		 	map[Coords]*Hex
-	MySaboteurs    	map[Coords]bool
-	MyHives      	map[Coords]bool
-	EnemyHives   	map[Coords]bool
-	FlowerFields 	map[Coords]bool
-	Mapped      	map[Coords]GameMapObject
-	Targeted		map[Coords]bool
-	Explorers	 	[]Coords
-	StillUnexplored	bool
-	EnemyBees		int
-	FlowerCount		uint
-	Builders		[]Coords
-	IsBuilding		bool
-	BuildTarget		Coords
-	IsBlocking		map[Coords]bool
-	BlockerTargets	map[Coords]Coords //map of enemy hive coordinates to blocker target coordinates
+	Revealed         map[Coords]Hex
+	MyBees           map[Coords]*Hex
+	MySaboteurs      map[Coords]bool
+	MyHives          map[Coords]bool
+	EnemyHives       map[Coords]bool
+	FlowerFields     map[Coords]bool
+	Mapped           map[Coords]GameMapObject
+	Targeted         map[Coords]bool
+	Explorers        []Coords
+	StillUnexplored  bool
+	EnemyBees        int
+	FlowerCount      uint
+	Builders         []Coords
+	IsBuilding       bool
+	BuildTarget      Coords
+	IsBlocking       map[Coords]bool
+	BlockerTargets   map[Coords]Coords //map of enemy hive coordinates to blocker target coordinates
 	BlockerPositions []Coords
-	TargetHive		Coords
+	TargetHive       Coords
 }
 
 func NewGameMap() GameMap {
 	return GameMap{
-		Revealed:     make(map[Coords]Hex),
-		MyBees:       make(map[Coords]*Hex),
-		MyHives:      make(map[Coords]bool),
-		EnemyHives:   make(map[Coords]bool),
-		FlowerFields: make(map[Coords]bool),
-		Targeted:     make(map[Coords]bool),
-		Mapped:       make(map[Coords]GameMapObject),
-		Explorers:	  make([]Coords, 2),
-		Builders:	  make([]Coords, 2),
-		BlockerTargets: make(map[Coords]Coords),
-		IsBlocking:	  make(map[Coords]bool),
+		Revealed:         make(map[Coords]Hex),
+		MyBees:           make(map[Coords]*Hex),
+		MyHives:          make(map[Coords]bool),
+		EnemyHives:       make(map[Coords]bool),
+		FlowerFields:     make(map[Coords]bool),
+		Targeted:         make(map[Coords]bool),
+		Mapped:           make(map[Coords]GameMapObject),
+		Explorers:        make([]Coords, 2),
+		Builders:         make([]Coords, 2),
+		BlockerTargets:   make(map[Coords]Coords),
+		IsBlocking:       make(map[Coords]bool),
 		BlockerPositions: make([]Coords, 2),
-		MySaboteurs:   make(map[Coords]bool),
+		MySaboteurs:      make(map[Coords]bool),
 	}
 }
 
@@ -97,7 +99,6 @@ func (gm *GameMap) MarkAsEdge(c Coords) {
 			tile.BeeHasFlower = false
 			tile.Flowers = 0
 			gm.Mapped[c] = tile
-			fmt.Printf("Edge found at %v\n", c)
 		}
 	}
 }
@@ -148,20 +149,20 @@ func getDistanceToNearestHive(c Coords, gm *GameMap) int {
 }
 
 func (gm *GameMap) updateExploringStatus() {
-	fmt.Println("MY BEE COUNT: ", len(gm.MyBees))
-	fmt.Println("EXPLORING: ", exploring)
+	// fmt.Println("MY BEE COUNT: ", len(gm.MyBees))
+	// fmt.Println("EXPLORING: ", exploring)
 	// Set exploring status based on number of unknown tiles
 	if exploring {
-		unknown_count := 0
+		Unknown_count = 0
 		for _, tile := range gm.Mapped {
 			if tile.Type == UNKNOWN {
-				unknown_count++
+				Unknown_count++
 			}
 		}
-		if unknown_count == 0 {
+		if Unknown_count == 0 {
 			exploring = false
 		}
-		fmt.Println("UNKNOWN COUNT: ", unknown_count)
+		// fmt.Println("UNKNOWN COUNT: ", Unknown_count)
 	}
 	// Assign an explorer role to the bee furthest from a hive not carrying a flower if there are more than 2 bees
 }
@@ -189,8 +190,8 @@ func (gm *GameMap) scanForEdges(viewer Coords, state *GameState) {
 }
 
 func (gm *GameMap) updateGameMap(state *GameState, player int) {
-	clear(gm.MyBees) //remove all old bees from map
-	gm.EnemyBees = 0	//forget old bees
+	clear(gm.MyBees)   //remove all old bees from map
+	gm.EnemyBees = 0   //forget old bees
 	clear(gm.Targeted) //remove all targeted tiles from last turn
 	for coords, visibleHex := range state.Hexes {
 		gm.Revealed[coords] = *visibleHex
@@ -265,10 +266,10 @@ func (gm *GameMap) updateGameMap(state *GameState, player int) {
 	}
 	gm.FlowerCount = 0
 	for coords, isField := range gm.FlowerFields {
-        if isField {
-            gm.FlowerCount += gm.Mapped[coords].Flowers
-        }
-    }
+		if isField {
+			gm.FlowerCount += gm.Mapped[coords].Flowers
+		}
+	}
 }
 
 func ClearScreen() {
@@ -348,10 +349,10 @@ func (gm *GameMap) DumpToFile(filename string) error {
 					symbol = "? "
 				}
 			}
-			fmt.Print(symbol)
+			// fmt.Print(symbol)
 			fmt.Fprint(f, symbol)
 		}
-		fmt.Print("\n")
+		// fmt.Print("\n")
 		fmt.Fprint(f, "\n")
 	}
 

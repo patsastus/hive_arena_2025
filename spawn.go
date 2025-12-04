@@ -1,12 +1,12 @@
 package main
 
 import (
-	"fmt"
+// "fmt"
 )
 
 import . "hive-arena/common"
 
-//distance-weighted sum of flowers near location
+// distance-weighted sum of flowers near location
 func (gm *GameMap) hiveScore(coords Coords, radius int) float64 {
 	var minRow, maxRow, minCol, maxCol int
 	minRow = coords.Row - radius
@@ -15,15 +15,19 @@ func (gm *GameMap) hiveScore(coords Coords, radius int) float64 {
 	maxCol = coords.Col + (radius * 2)
 	sum := 0.0
 	for r := minRow; r <= maxRow; r++ {
-		for c := minCol; c <= maxCol; c++{
+		for c := minCol; c <= maxCol; c++ {
 			test := Coords{
 				Row: r,
 				Col: c,
 			}
 			d := dist(test, coords)
-			if (d > radius || d == 0) { continue }
+			if d > radius || d == 0 {
+				continue
+			}
 			tile := gm.Mapped[test]
-			if (tile == GameMapObject{}) { continue }
+			if (tile == GameMapObject{}) {
+				continue
+			}
 			sum += float64(tile.Flowers) / float64(d)
 		}
 	}
@@ -31,20 +35,20 @@ func (gm *GameMap) hiveScore(coords Coords, radius int) float64 {
 }
 
 func (gm *GameMap) updateBuilderLoc() {
-	if _, exists := gm.MyBees[gm.Builders[1]]; exists {  //assign a boolean to 'exists'; then use it. If true, builder bee is in expected position
+	if _, exists := gm.MyBees[gm.Builders[1]]; exists { //assign a boolean to 'exists'; then use it. If true, builder bee is in expected position
 		gm.Builders[0] = gm.Builders[1] //update the position of the builder
 	}
 }
 
-//returns the coordinates of the best hive position and a score of how many flowers are nearby
+// returns the coordinates of the best hive position and a score of how many flowers are nearby
 func (gm *GameMap) bestNewHivePos() (Coords, float64) {
 	bestScore := 0.0
 	bestLocation := Coords{}
-	const (	//tunable constants
-		minDToOwn = 6.0
+	const ( //tunable constants
+		minDToOwn   = 6.0
 		minDToEnemy = 12.0
-		wExpansion = 0.10
-		scanRadius = 5
+		wExpansion  = 0.10
+		scanRadius  = 5
 	)
 	for field, object := range gm.Mapped {
 		if object == (GameMapObject{}) || !object.IsWalkable || object.Type == ENEMY_HIVE || object.Type == OWN_HIVE {
@@ -54,63 +58,78 @@ func (gm *GameMap) bestNewHivePos() (Coords, float64) {
 		for hive, _ := range gm.MyHives {
 			closestHiveD = min(closestHiveD, dist(hive, field))
 		}
-		if closestHiveD < minDToOwn { continue }
+		if closestHiveD < minDToOwn {
+			continue
+		}
 		closestEnemyD := 20000
 		for hive, _ := range gm.EnemyHives {
-            d := dist(hive, field)
-            if d < closestEnemyD { closestEnemyD = d }
-        }
+			d := dist(hive, field)
+			if d < closestEnemyD {
+				closestEnemyD = d
+			}
+		}
 		rawScore := gm.hiveScore(field, scanRadius)
-		if (rawScore < 0.1) { continue }
+		if rawScore < 0.1 {
+			continue
+		}
 
 		safetyFactor := 1.0
-		if (float64(closestEnemyD) < minDToEnemy) { safetyFactor = float64(closestEnemyD) / minDToEnemy }
+		if float64(closestEnemyD) < minDToEnemy {
+			safetyFactor = float64(closestEnemyD) / minDToEnemy
+		}
 
 		expansionFactor := 1.0 + (float64(closestHiveD) * wExpansion)
 		finalScore := rawScore * safetyFactor * expansionFactor
-		
+
 		if finalScore > bestScore {
 			bestScore = finalScore
 			bestLocation = field
 		}
 	}
-	fmt.Printf("Best hive location: %v, score: %f\n", bestLocation, bestScore)
+	// fmt.Printf("Best hive location: %v, score: %f\n", bestLocation, bestScore)
 	return bestLocation, bestScore
 }
 
-//used to calculate flowers-per-turn and turns-until-depleted
+// used to calculate flowers-per-turn and turns-until-depleted
 func (gm *GameMap) effectiveDistance() float64 {
 	weightedSum := 0.0
 	for field, nonEmpty := range gm.FlowerFields {
 		distance := 20000
-		if !nonEmpty { continue }
+		if !nonEmpty {
+			continue
+		}
 		for hive, _ := range gm.MyHives {
-			if (dist(field, hive) < distance) { 
+			if dist(field, hive) < distance {
 				distance = dist(field, hive)
 			}
 		}
 		weightedSum += float64(gm.Mapped[field].Flowers) / float64(distance)
 	}
-	if weightedSum < 0.001 { return 0.0 }
+	if weightedSum < 0.001 {
+		return 0.0
+	}
 	return (float64(gm.FlowerCount) / weightedSum)
 }
 
 func (gm *GameMap) estimateFlowersPerTurn(beeCount int) float64 {
 	d := gm.effectiveDistance()
-	if (d < 0.001) { return 0.0 }
-	return float64(beeCount) / (2.0 * d + 2.0) //+2 is for picking up and dropping off flower
+	if d < 0.001 {
+		return 0.0
+	}
+	return float64(beeCount) / (2.0*d + 2.0) //+2 is for picking up and dropping off flower
 }
 
-//assumes opponents have the same flowerrate as us
-func (gm *GameMap) turnsUntilDepleted() int{
-	ratio := float64(len(gm.MyBees) + gm.EnemyBees) / float64(len(gm.MyBees))
+// assumes opponents have the same flowerrate as us
+func (gm *GameMap) turnsUntilDepleted() int {
+	ratio := float64(len(gm.MyBees)+gm.EnemyBees) / float64(len(gm.MyBees))
 	FPT := gm.estimateFlowersPerTurn(len(gm.MyBees))
-	if FPT < 0.001 { return 0 }
+	if FPT < 0.001 {
+		return 0
+	}
 	return int((float64(gm.FlowerCount) / ratio) / FPT)
 }
 
-
-/*//calculate the effect of spawning a new bee, and return whether we'll break even on the cost by 
+/*//calculate the effect of spawning a new bee, and return whether we'll break even on the cost by
 //the time all flowers are depleted (at current estimated rate). slightly overeager spawn?
 //because collection rate probably going up early on
 func (gm *GameMap) BreakEven(hive Coords) bool {
@@ -122,23 +141,29 @@ func (gm *GameMap) BreakEven(hive Coords) bool {
 */
 
 func (gm *GameMap) BreakEven(hive Coords, beesNear int) bool {
-    localPotential := 0.0
-    for field, isField := range gm.FlowerFields {
-        if !isField { continue }
-        d := dist(hive, field)
-        if d == 0 { d = 1 } 
-        if d <= 12 {
-            localPotential += float64(gm.Mapped[field].Flowers) / float64(d)
-        }
-    }
-    if beesNear == 0 { beesNear++ }
-    score := localPotential / float64(beesNear)
+	localPotential := 0.0
+	for field, isField := range gm.FlowerFields {
+		if !isField {
+			continue
+		}
+		d := dist(hive, field)
+		if d == 0 {
+			d = 1
+		}
+		if d <= 12 {
+			localPotential += float64(gm.Mapped[field].Flowers) / float64(d)
+		}
+	}
+	if beesNear == 0 {
+		beesNear++
+	}
+	score := localPotential / float64(beesNear)
 
-    // DEBUG
-	fmt.Printf("Hive %v Score: %.2f (Pot: %.1f / Bees: %.1f)\n", hive, score, localPotential, beesNear)
+	// DEBUG
+	// fmt.Printf("Hive %v Score: %.2f (Pot: %.1f / Bees: %.1f)\n", hive, score, localPotential, beesNear)
 
-    // Tune this number! Start low (0.5) and raise it if you overspawn.
-    return score > 0.5
+	// Tune this number! Start low (0.5) and raise it if you overspawn.
+	return score > 0.5
 }
 
 func (gm *GameMap) goBuild() Order {
@@ -148,8 +173,9 @@ func (gm *GameMap) goBuild() Order {
 		return temp
 	}
 	gm.IsBuilding = false
+	HasExplorer = false
 	return (Order{
-		Type:      BUILD_HIVE,
-		Coords:    gm.Builders[0],
+		Type:   BUILD_HIVE,
+		Coords: gm.Builders[0],
 	})
 }
