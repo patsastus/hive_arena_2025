@@ -13,6 +13,7 @@ import (
 var dirs = []Direction{E, SE, SW, W, NW, NE}
 var gameMap GameMap
 var exploring bool
+var should_build_hive bool = false
 
 var previousDirection Coords
 var activeExplorerCoords Coords
@@ -22,7 +23,7 @@ var explorerTarget = Coords{Row: -100, Col: -100}
 
 var (
 	BeesPerHive    int     = 5
-	ScoreThreshold float64 = 50.0
+	ScoreThreshold float64 = 75.0
 )
 
 func dist(one, two Coords) int {
@@ -265,17 +266,16 @@ func think(state *GameState, player int) []Order {
 
 	//building a new hive logic
 	gameMap.updateBuilderLoc()
-	if (!exploring || Unknown_count < 7) && len(gameMap.MyHives) < 2 && state.PlayerResources[player] >= 12 && state.Turn%10 == 0 {
-		gameMap.IsBuilding = true
-		loc, score := gameMap.bestNewHivePos()
-		if loc != gameMap.BuildTarget && score > ScoreThreshold {
+	loc, score := gameMap.bestNewHivePos()
+	if !exploring || Unknown_count < 7 || score > ScoreThreshold {
+		should_build_hive = true
+		if len(gameMap.MyHives) < 2 && state.PlayerResources[player] >= 12 {
+			gameMap.IsBuilding = true
 			gameMap.BuildTarget = loc
 			gameMap.Builders[0] = gameMap.getNearestFreeBee(loc)
+			should_build_hive = false
 			orders = append(orders, gameMap.goBuild())
 		}
-	}
-	if gameMap.IsBuilding {
-		orders = append(orders, gameMap.goBuild())
 	}
 
 	//sending out blockers logic
@@ -343,7 +343,7 @@ func think(state *GameState, player int) []Order {
 		}
 	}
 	for coords, _ := range gameMap.MyHives { //see if we should spawn bees
-		if len(gameMap.MyBees) >= BeesPerHive*len(gameMap.MyHives)+gameMap.blockerCount() ||
+		if !should_build_hive && len(gameMap.MyBees) >= BeesPerHive*len(gameMap.MyHives)+gameMap.blockerCount() ||
 			int(gameMap.FlowerCount)/state.NumPlayers < 6 {
 			break
 		}
