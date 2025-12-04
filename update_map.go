@@ -99,7 +99,6 @@ func (gm *GameMap) MarkAsEdge(c Coords) {
 			tile.BeeHasFlower = false
 			tile.Flowers = 0
 			gm.Mapped[c] = tile
-			fmt.Printf("Edge found at %v\n", c)
 		}
 	}
 }
@@ -150,8 +149,8 @@ func getDistanceToNearestHive(c Coords, gm *GameMap) int {
 }
 
 func (gm *GameMap) updateExploringStatus() {
-	fmt.Println("MY BEE COUNT: ", len(gm.MyBees))
-	fmt.Println("EXPLORING: ", exploring)
+	// fmt.Println("MY BEE COUNT: ", len(gm.MyBees))
+	// fmt.Println("EXPLORING: ", exploring)
 	// Set exploring status based on number of unknown tiles
 	if exploring {
 		Unknown_count = 0
@@ -163,7 +162,7 @@ func (gm *GameMap) updateExploringStatus() {
 		if Unknown_count == 0 {
 			exploring = false
 		}
-		fmt.Println("UNKNOWN COUNT: ", Unknown_count)
+		// fmt.Println("UNKNOWN COUNT: ", Unknown_count)
 	}
 	// Assign an explorer role to the bee furthest from a hive not carrying a flower if there are more than 2 bees
 }
@@ -350,10 +349,10 @@ func (gm *GameMap) DumpToFile(filename string) error {
 					symbol = "? "
 				}
 			}
-			fmt.Print(symbol)
+			// fmt.Print(symbol)
 			fmt.Fprint(f, symbol)
 		}
-		fmt.Print("\n")
+		// fmt.Print("\n")
 		fmt.Fprint(f, "\n")
 	}
 

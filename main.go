@@ -18,12 +18,12 @@ var should_build_hive bool = false
 var previousDirection Coords
 var activeExplorerCoords Coords
 var previousExplorerCoords Coords
-var hasExplorer bool = false
 var explorerTarget = Coords{Row: -100, Col: -100}
 
 var (
+	HasExplorer    bool    = false
 	BeesPerHive    int     = 5
-	ScoreThreshold float64 = 75.0
+	ScoreThreshold float64 = 140.0
 )
 
 func dist(one, two Coords) int {
@@ -44,7 +44,7 @@ func dist(one, two Coords) int {
 }
 
 func IdentifyExplorer(gm *GameMap) {
-	if !hasExplorer {
+	if !HasExplorer {
 		RecruitNewExplorer(gm)
 		return
 	}
@@ -66,7 +66,7 @@ func IdentifyExplorer(gm *GameMap) {
 	}
 
 	// We must recruit a replacement.
-	fmt.Println("Explorer MIA! Recruiting replacement...")
+	// fmt.Println("Explorer MIA! Recruiting replacement...")
 	RecruitNewExplorer(gm)
 }
 
@@ -95,13 +95,13 @@ func RecruitNewExplorer(gm *GameMap) {
 	if found {
 		activeExplorerCoords = bestBee
 		previousExplorerCoords = bestBee
-		hasExplorer = true
-		fmt.Printf("Recruited NEW Explorer at %v\n", bestBee)
+		HasExplorer = true
+		// fmt.Printf("Recruited NEW Explorer at %v\n", bestBee)
 		tile := gameMap.Mapped[activeExplorerCoords]
 		tile.Type = EXPLORER
 		gameMap.Mapped[activeExplorerCoords] = tile
 	} else {
-		hasExplorer = false
+		HasExplorer = false
 	}
 }
 
@@ -174,7 +174,7 @@ func (gm *GameMap) getNearestUnknown(coords Coords) Coords {
 		}
 	}
 	if found {
-		fmt.Println("New Explorer Target Acquired: ", target)
+		// fmt.Println("New Explorer Target Acquired: ", target)
 		explorerTarget = target
 		return target
 	}
@@ -270,6 +270,8 @@ func think(state *GameState, player int) []Order {
 	if !exploring || Unknown_count < 7 || score > ScoreThreshold {
 		should_build_hive = true
 		if len(gameMap.MyHives) < 2 && state.PlayerResources[player] >= 12 {
+			println("score: ", score)
+			println("scorethreshold: ", ScoreThreshold)
 			gameMap.IsBuilding = true
 			gameMap.BuildTarget = loc
 			gameMap.Builders[0] = gameMap.getNearestFreeBee(loc)
@@ -277,12 +279,15 @@ func think(state *GameState, player int) []Order {
 			orders = append(orders, gameMap.goBuild())
 		}
 	}
+	if len(gameMap.MyHives) >= 2 {
+		should_build_hive = false
+	}
 
 	//sending out blockers logic
 	gameMap.updateBlockers()
 	if (gameMap.TargetHive == Coords{}) {
 		newBlocker := (len(gameMap.MyBees) >= BeesPerHive*len(gameMap.MyHives))
-		fmt.Printf("[TURN %d DEBUG] Blocker Check: Bees=%d/%d | CurrentBlockers=%d | AllowNew=%v\n", state.Turn, len(gameMap.MyBees), BeesPerHive*len(gameMap.MyHives), gameMap.blockerCount(), newBlocker)
+		// fmt.Printf("[TURN %d DEBUG] Blocker Check: Bees=%d/%d | CurrentBlockers=%d | AllowNew=%v\n", state.Turn, len(gameMap.MyBees), BeesPerHive*len(gameMap.MyHives), gameMap.blockerCount(), newBlocker)
 		if !exploring && newBlocker && gameMap.blockerCount() < state.NumPlayers-1 { //we should make a new blocker
 			gameMap.makeBlockTargets()
 			for hive, _ := range gameMap.EnemyHives {
@@ -290,7 +295,7 @@ func think(state *GameState, player int) []Order {
 					gameMap.TargetHive = hive              //set this hive as target
 					target := gameMap.BlockerTargets[hive] //target for the bee to go to
 					nearestBee := gameMap.getNearestFreeBee(target)
-					fmt.Printf("[TURN %d DEBUG] ⚔️ ASSIGNING BLOCKER! Bee %v -> Hive %v (Target Spot: %v)\n", state.Turn, nearestBee, hive, target)
+					// fmt.Printf("[TURN %d DEBUG] ⚔️ ASSIGNING BLOCKER! Bee %v -> Hive %v (Target Spot: %v)\n", state.Turn, nearestBee, hive, target)
 					gameMap.BlockerPositions[0] = nearestBee
 					orders = append(orders, gameMap.goSabotage(hive, target, nearestBee))
 					break
@@ -300,7 +305,7 @@ func think(state *GameState, player int) []Order {
 	} else {
 		bee := gameMap.BlockerPositions[0]
 		target := gameMap.BlockerTargets[gameMap.TargetHive]
-		fmt.Printf("[TURN %d DEBUG] 🏃 Blocker %v is moving toward %v\n", state.Turn, bee, target)
+		// fmt.Printf("[TURN %d DEBUG] 🏃 Blocker %v is moving toward %v\n", state.Turn, bee, target)
 		orders = append(orders, gameMap.goSabotage(gameMap.TargetHive, target, bee))
 	}
 
@@ -343,7 +348,7 @@ func think(state *GameState, player int) []Order {
 		}
 	}
 	for coords, _ := range gameMap.MyHives { //see if we should spawn bees
-		if !should_build_hive && len(gameMap.MyBees) >= BeesPerHive*len(gameMap.MyHives)+gameMap.blockerCount() ||
+		if len(gameMap.MyBees) >= BeesPerHive*len(gameMap.MyHives)+gameMap.blockerCount() ||
 			int(gameMap.FlowerCount)/state.NumPlayers < 6 {
 			break
 		}
@@ -361,10 +366,10 @@ func think(state *GameState, player int) []Order {
 		// PRINT THE TRUTH
 		//		fmt.Printf("[TURN %d] Hive %v Analysis:\n", state.Turn, coords)
 		//		fmt.Printf("\tBreakEven: %v\n", isWorthIt)
-		if (empty || isWorthIt) && haveMoney {
+		if (empty || isWorthIt) && haveMoney && !should_build_hive {
 			o := spawnBee(coords, player)
 			if o.Type == "" {
-				fmt.Printf("\tCRITICAL: Conditions met, but spawnBee returned empty! (Hive blocked?)\n")
+				// fmt.Printf("\tCRITICAL: Conditions met, but spawnBee returned empty! (Hive blocked?)\n")
 			}
 			orders = append(orders, o)
 		}
@@ -373,8 +378,8 @@ func think(state *GameState, player int) []Order {
 }
 
 func main() {
-	flag.IntVar(&BeesPerHive, "bees", 5, "Target number of bees per hive")
-	flag.Float64Var(&ScoreThreshold, "score", 50.0, "Score threshold for new hive")
+	// flag.IntVar(&BeesPerHive, "bees", 5, "Target number of bees per hive")
+	// flag.Float64Var(&ScoreThreshold, "score", 50.0, "Score threshold for new hive")
 
 	flag.Parse()
 
